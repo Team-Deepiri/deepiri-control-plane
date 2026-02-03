@@ -175,7 +175,7 @@ services:
       REDIS_URL: redis://:${REDIS_PASSWORD:-redispassword}@redis:6379
       
       # JWT
-      JWT_SECRET: ${JWT_SECRET:-your_jwt_secret_key_here}
+      JWT_SECRET: ${JWT_SECRET:-your_jwt_secret_key_here_minimum_32_characters}
       
       # External APIs
       OPENAI_API_KEY: ${OPENAI_API_KEY}
