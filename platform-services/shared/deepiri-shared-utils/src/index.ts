@@ -10,3 +10,4 @@ export const logger: winston.Logger = createLogger('shared-utils'); // Default l
 export { StreamingClient, StreamTopics } from './streaming/StreamingClient';
 export type { StreamEvent } from './streaming/StreamingClient';
 
+export { secureLog } from './secureLogger';
