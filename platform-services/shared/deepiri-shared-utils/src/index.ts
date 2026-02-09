@@ -11,3 +11,4 @@ export { StreamingClient, StreamTopics } from './streaming/StreamingClient';
 export type { StreamEvent } from './streaming/StreamingClient';
 
 export { secureLog } from './secureLogger';
+export { validateSecret, validateDatabaseUrl } from './config/secrets';
