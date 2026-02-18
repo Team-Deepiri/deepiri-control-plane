@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { createLogger } from '@deepiri/shared-utils';
+import { secureLog } from '@deepiri/shared-utils';
 import prisma from './db';
+import { publishTaskCreated, publishTaskCompleted, publishTaskFailed } from './streaming/eventPublisher';
 
 const logger = createLogger('task-versioning-service');
 
@@ -12,7 +14,7 @@ class TaskVersioningService {
       // Placeholder - would query tasks
       res.json({ tasks: [] });
     } catch (error: any) {
-      logger.error('Error getting tasks:', error);
+      secureLog('error', 'Error getting tasks:', error);
       res.status(500).json({ error: 'Failed to get tasks' });
     }
   }
@@ -27,9 +29,15 @@ class TaskVersioningService {
       }
 
       const version = await this.createInitialVersion(taskId, userId, taskData);
+      
+      // Publish task-created event
+      await publishTaskCreated(taskId, userId, taskData).catch((err) => {
+        secureLog('warn', 'Failed to publish task-created event:', err);
+      });
+      
       res.json(version);
     } catch (error: any) {
-      logger.error('Error creating task:', error);
+      secureLog('error', 'Error creating task:', error);
       res.status(500).json({ error: 'Failed to create task' });
     }
   }
@@ -45,9 +53,23 @@ class TaskVersioningService {
       }
 
       const version = await this.createVersion(id, userId, changes, changeReason);
+      
+      // Publish events based on status changes
+      if (changes.status) {
+        if (changes.status === 'completed') {
+          await publishTaskCompleted(id, userId, version).catch((err) => {
+            secureLog('warn', 'Failed to publish task-completed event:', err);
+          });
+        } else if (changes.status === 'failed' || changes.status === 'error') {
+          await publishTaskFailed(id, userId, changeReason || 'Task failed').catch((err) => {
+            secureLog('warn', 'Failed to publish task-failed event:', err);
+          });
+        }
+      }
+      
       res.json(version);
     } catch (error: any) {
-      logger.error('Error updating task:', error);
+      secureLog('error', 'Error updating task:', error);
       res.status(500).json({ error: 'Failed to update task' });
     }
   }
@@ -59,7 +81,7 @@ class TaskVersioningService {
       const versions = await this.getVersionHistory(id, parseInt(limit as string, 10));
       res.json(versions);
     } catch (error: any) {
-      logger.error('Error getting versions:', error);
+      secureLog('error', 'Error getting versions:', error);
       res.status(500).json({ error: 'Failed to get versions' });
     }
   }
@@ -80,10 +102,10 @@ class TaskVersioningService {
         }
       });
 
-      logger.info('Initial task version created', { taskId, version: 1 });
+      secureLog('info', 'Initial task version created', { taskId, version: 1 });
       return version;
     } catch (error) {
-      logger.error('Error creating initial version:', error);
+      secureLog('error', 'Error creating initial version:', error);
       throw error;
     }
   }
@@ -118,17 +140,17 @@ class TaskVersioningService {
           changedByUser: {
             select: {
               id: true,
-              name: true,
-              email: true
+              //name: true,
+              //email: true
             }
           }
         }
       });
 
-      logger.info('Task version created', { taskId, version: newVersionNumber });
+      secureLog('info', 'Task version created', { taskId, version: newVersionNumber });
       return version;
     } catch (error) {
-      logger.error('Error creating version:', error);
+      secureLog('error', 'Error creating version:', error);
       throw error;
     }
   }
@@ -143,14 +165,14 @@ class TaskVersioningService {
           changedByUser: {
             select: {
               id: true,
-              name: true,
-              email: true
+              //name: true,
+              //email: true
             }
           }
         }
       });
 
-      return versions.map(v => ({
+      return versions.map((v: typeof versions[0]) => ({
         version: v.version,
         changes: {
           title: v.title,
@@ -165,7 +187,7 @@ class TaskVersioningService {
         metadata: v.metadata
       }));
     } catch (error) {
-      logger.error('Error getting version history:', error);
+      secureLog('error', 'Error getting version history:', error);
       throw error;
     }
   }

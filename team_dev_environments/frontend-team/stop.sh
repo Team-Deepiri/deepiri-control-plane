@@ -1,32 +1,34 @@
 #!/bin/bash
 # Frontend Team - Stop script
-# Stops and removes all containers started by frontend-team/run.py
+# Stops frontend team services using docker-compose.dev.yml with service selection
 
 set -e
 
-echo "🛑 Stopping Frontend Team services..."
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# List of containers started by frontend-team/run.py
-CONTAINERS=(
-    "deepiri-postgres-frontend"
-    "deepiri-pgadmin-frontend"
-    "deepiri-adminer-frontend"
-    "deepiri-redis-frontend"
-    "deepiri-frontend-frontend"
-    "deepiri-api-gateway-frontend"
-    "deepiri-realtime-gateway-frontend"
+cd "$PROJECT_ROOT"
+
+# Frontend team services - only what frontend engineers need
+SERVICES=(
+  frontend-dev
+  api-gateway
+  auth-service
+  notification-service
+  postgres
 )
 
-# Stop and remove containers
-for container in "${CONTAINERS[@]}"; do
-    if docker ps -a --format '{{.Names}}' | grep -q "^${container}$"; then
-        echo "Stopping ${container}..."
-        docker stop "${container}" 2>/dev/null || true
-        echo "Removing ${container}..."
-        docker rm "${container}" 2>/dev/null || true
-    else
-        echo "⚠️  Container ${container} not found, skipping..."
-    fi
-done
+echo "🛑 Stopping Frontend Team services..."
+echo "   (Using docker-compose.dev.yml with service selection)"
+echo "   Services: ${SERVICES[*]}"
+echo ""
 
-echo "✅ Frontend Team services stopped and removed!"
+# Stop selected services
+docker compose -f docker-compose.dev.yml stop "${SERVICES[@]}"
+
+echo ""
+echo "✅ Frontend Team services stopped!"
+echo ""
+echo "Note: Containers are stopped but not removed."
+echo "To remove containers: docker compose -f docker-compose.dev.yml rm -f ${SERVICES[*]}"
+echo "To remove volumes as well: docker compose -f docker-compose.dev.yml down -v"

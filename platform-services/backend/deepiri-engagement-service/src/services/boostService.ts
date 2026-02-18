@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { createLogger } from '@deepiri/shared-utils';
+import { secureLog } from '@deepiri/shared-utils';
 import prisma from '../db';
 
 const logger = createLogger('boost-service');
@@ -75,7 +76,8 @@ class BoostService {
       
       // Remove expired boosts
       const nowTime = now.getTime();
-      const expiredBoosts = profile.activeBoosts.filter(boost => 
+      const activeBoosts = profile.activeBoosts || [];
+      const expiredBoosts = activeBoosts.filter((boost) => 
         new Date(boost.expiresAt).getTime() <= nowTime
       );
       
@@ -98,7 +100,7 @@ class BoostService {
         // Delete expired active boosts
         await prisma.activeBoost.deleteMany({
           where: {
-            id: { in: expiredBoosts.map(b => b.id) }
+            id: { in: expiredBoosts.map((b) => b.id) }
           }
         });
         
@@ -114,7 +116,7 @@ class BoostService {
       
       return profile!;
     } catch (error: any) {
-      logger.error('Error getting boost profile:', error);
+      secureLog('error', 'Error getting boost profile:', error);
       throw error;
     }
   }
@@ -179,11 +181,11 @@ class BoostService {
         }
       });
       
-      logger.info(`Boost activated: ${boostType} for user ${userId}`);
+      secureLog('info', `Boost activated: ${boostType} for user ${userId}`);
       
       return updated;
     } catch (error: any) {
-      logger.error('Error activating boost:', error);
+      secureLog('error', 'Error activating boost:', error);
       throw error;
     }
   }
@@ -195,9 +197,9 @@ class BoostService {
     try {
       const profile = await this.getOrCreateProfile(userId);
       const now = new Date();
-      return profile.activeBoosts.filter(boost => new Date(boost.expiresAt) > now);
+      return profile.activeBoosts.filter((boost) => new Date(boost.expiresAt) > now);
     } catch (error: any) {
-      logger.error('Error getting active boosts:', error);
+      secureLog('error', 'Error getting active boosts:', error);
       throw error;
     }
   }
@@ -216,7 +218,7 @@ class BoostService {
       });
       return updated;
     } catch (error: any) {
-      logger.error('Error adding boost credits:', error);
+      secureLog('error', 'Error adding boost credits:', error);
       throw error;
     }
   }
@@ -249,7 +251,7 @@ class BoostService {
       res.json({
         success: true,
         data: {
-          activeBoosts: profile.activeBoosts.map(ab => ({
+          activeBoosts: profile.activeBoosts.map((ab) => ({
             boostType: ab.boostType,
             activatedAt: ab.activatedAt,
             expiresAt: ab.expiresAt,
@@ -261,7 +263,7 @@ class BoostService {
         }
       });
     } catch (error: any) {
-      logger.error('Error activating boost:', error);
+      secureLog('error', 'Error activating boost:', error);
       res.status(400).json({ error: error.message || 'Failed to activate boost' });
     }
   }
@@ -283,7 +285,7 @@ class BoostService {
       res.json({
         success: true,
         data: {
-          activeBoosts: profile.activeBoosts.map(ab => ({
+          activeBoosts: profile.activeBoosts.map((ab) => ({
             boostType: ab.boostType,
             activatedAt: ab.activatedAt,
             expiresAt: ab.expiresAt,
@@ -301,7 +303,7 @@ class BoostService {
         }
       });
     } catch (error: any) {
-      logger.error('Error getting boost profile:', error);
+      secureLog('error', 'Error getting boost profile:', error);
       res.status(500).json({ error: 'Failed to get boost profile' });
     }
   }
@@ -327,7 +329,7 @@ class BoostService {
         }
       });
     } catch (error: any) {
-      logger.error('Error adding boost credits:', error);
+      secureLog('error', 'Error adding boost credits:', error);
       res.status(500).json({ error: 'Failed to add boost credits' });
     }
   }
@@ -345,7 +347,7 @@ class BoostService {
         }
       });
     } catch (error: any) {
-      logger.error('Error getting boost costs:', error);
+      secureLog('error', 'Error getting boost costs:', error);
       res.status(500).json({ error: 'Failed to get boost costs' });
     }
   }

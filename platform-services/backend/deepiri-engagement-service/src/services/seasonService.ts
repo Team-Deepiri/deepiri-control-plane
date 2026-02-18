@@ -1,13 +1,46 @@
 import { Request, Response } from 'express';
-import mongoose, { Types } from 'mongoose';
 import { createLogger } from '@deepiri/shared-utils';
-import Season, { ISeason } from '../models/Season';
-import Odyssey from '../models/Odyssey';
-import Objective from '../models/Objective';
+import { secureLog } from '@deepiri/shared-utils';
+import prisma from '../db';
+import { ISeason } from '../models/Season';
 
 const logger = createLogger('season-service');
 
 class SeasonService {
+  /**
+   * Convert Prisma Season to ISeason
+   */
+  private seasonToInterface(season: any): ISeason {
+    const odysseys = (season.quests || []).map((q: any) => q.id);
+
+    return {
+      userId: '', // Not in schema - would need to be added or derived
+      name: season.name,
+      description: season.description || undefined,
+      startDate: season.startDate,
+      endDate: season.endDate,
+      sprintCycle: undefined, // Not in schema
+      organizationId: undefined, // Not in schema
+      status: season.isActive ? 'active' : 'upcoming',
+      odysseys,
+      seasonBoosts: {
+        enabled: (season.seasonBoosts || []).length > 0,
+        boostType: (season.seasonBoosts || [])[0]?.boostType,
+        multiplier: (season.seasonBoosts || [])[0]?.boostMultiplier || 1.0,
+        description: (season.seasonBoosts || [])[0]?.description
+      },
+      highlights: {
+        totalMomentumEarned: 0, // Would need to calculate from quests
+        objectivesCompleted: 0, // Would need to calculate from tasks
+        odysseysCompleted: odysseys.length,
+        topContributors: []
+      },
+      metadata: (season.metadata as Record<string, any>) || undefined,
+      createdAt: season.createdAt,
+      updatedAt: season.updatedAt
+    };
+  }
+
   /**
    * Create a new season
    */
@@ -21,28 +54,30 @@ class SeasonService {
     organizationId?: string
   ): Promise<ISeason> {
     try {
-      const season = new Season({
-        userId: new Types.ObjectId(userId),
-        name,
-        description,
-        startDate,
-        endDate,
-        sprintCycle,
-        organizationId: organizationId ? new Types.ObjectId(organizationId) : undefined,
-        status: new Date() < startDate ? 'upcoming' : 'active',
-        highlights: {
-          totalMomentumEarned: 0,
-          objectivesCompleted: 0,
-          odysseysCompleted: 0,
-          topContributors: []
+      const season = await prisma.season.create({
+        data: {
+          name,
+          description,
+          startDate,
+          endDate,
+          isActive: new Date() >= startDate,
+          theme: {},
+          rewards: {},
+          metadata: {
+            userId,
+            sprintCycle,
+            organizationId
+          }
+        },
+        include: {
+          quests: true,
+          seasonBoosts: true
         }
       });
       
-      await season.save();
-      
-      return season;
+      return this.seasonToInterface(season);
     } catch (error: any) {
-      logger.error('Error creating season:', error);
+      secureLog('error', 'Error creating season:', error);
       throw error;
     }
   }
@@ -52,26 +87,27 @@ class SeasonService {
    */
   async addOdyssey(seasonId: string, odysseyId: string): Promise<ISeason> {
     try {
-      const season = await Season.findById(seasonId);
-      
+      // Update quest to link to season
+      await prisma.quest.update({
+        where: { id: odysseyId },
+        data: { seasonId }
+      });
+
+      const season = await prisma.season.findUnique({
+        where: { id: seasonId },
+        include: {
+          quests: true,
+          seasonBoosts: true
+        }
+      });
+
       if (!season) {
         throw new Error('Season not found');
       }
-      
-      if (!season.odysseys.includes(new Types.ObjectId(odysseyId))) {
-        season.odysseys.push(new Types.ObjectId(odysseyId));
-        
-        // Update odyssey to link to season
-        await Odyssey.findByIdAndUpdate(odysseyId, {
-          seasonId: new Types.ObjectId(seasonId)
-        });
-        
-        await season.save();
-      }
-      
-      return season;
+
+      return this.seasonToInterface(season);
     } catch (error: any) {
-      logger.error('Error adding odyssey to season:', error);
+      secureLog('error', 'Error adding odyssey to season:', error);
       throw error;
     }
   }
@@ -86,24 +122,32 @@ class SeasonService {
     description?: string
   ): Promise<ISeason> {
     try {
-      const season = await Season.findById(seasonId);
-      
+      await prisma.seasonBoost.create({
+        data: {
+          seasonId,
+          name: `${boostType} Boost`,
+          description,
+          boostType,
+          boostMultiplier: multiplier,
+          isActive: true
+        }
+      });
+
+      const season = await prisma.season.findUnique({
+        where: { id: seasonId },
+        include: {
+          quests: true,
+          seasonBoosts: true
+        }
+      });
+
       if (!season) {
         throw new Error('Season not found');
       }
-      
-      season.seasonBoosts = {
-        enabled: true,
-        boostType,
-        multiplier,
-        description
-      };
-      
-      await season.save();
-      
-      return season;
+
+      return this.seasonToInterface(season);
     } catch (error: any) {
-      logger.error('Error enabling season boost:', error);
+      secureLog('error', 'Error enabling season boost:', error);
       throw error;
     }
   }
@@ -113,47 +157,86 @@ class SeasonService {
    */
   async generateHighlights(seasonId: string): Promise<ISeason> {
     try {
-      const season = await Season.findById(seasonId);
-      
+      const season = await prisma.season.findUnique({
+        where: { id: seasonId },
+        include: {
+          quests: {
+            include: {
+              tasks: {
+                where: {
+                  status: 'done'
+                },
+                include: {
+                  taskCompletions: true
+                }
+              }
+            }
+          },
+          seasonBoosts: true
+        }
+      });
+
       if (!season) {
         throw new Error('Season not found');
       }
-      
-      // Calculate totals from odysseys
-      const odysseys = await Odyssey.find({ seasonId: new Types.ObjectId(seasonId) });
-      
+
+      // Calculate totals
       let totalMomentum = 0;
       let objectivesCompleted = 0;
       let odysseysCompleted = 0;
-      
-      for (const odyssey of odysseys) {
-        if (odyssey.status === 'completed') {
+
+      for (const quest of season.quests) {
+        if (quest.status === 'completed') {
           odysseysCompleted += 1;
         }
-        
-        const objectives = await Objective.find({ odysseyId: odyssey._id });
-        const completed = objectives.filter(obj => obj.status === 'completed');
-        objectivesCompleted += completed.length;
-        
-        // Sum momentum from completed objectives
-        completed.forEach(obj => {
-          totalMomentum += obj.completionData?.momentumEarned || 0;
-        });
+
+        objectivesCompleted += quest.tasks.length;
+
+        // Sum momentum from completed tasks
+        for (const task of quest.tasks) {
+          for (const completion of task.taskCompletions) {
+            totalMomentum += completion.momentumEarned;
+          }
+        }
       }
-      
-      season.highlights = {
+
+      // Update season metadata with highlights
+      const highlights = {
         totalMomentumEarned: totalMomentum,
         objectivesCompleted,
         odysseysCompleted,
-        topContributors: [], // Would need to aggregate from momentum service
+        topContributors: [],
         generatedAt: new Date()
       };
-      
-      await season.save();
-      
-      return season;
+
+      await prisma.season.update({
+        where: { id: seasonId },
+        data: {
+          metadata: {
+            ...(season.metadata as any || {}),
+            highlights
+          }
+        }
+      });
+
+      const updatedSeason = await prisma.season.findUnique({
+        where: { id: seasonId },
+        include: {
+          quests: true,
+          seasonBoosts: true
+        }
+      });
+
+      if (!updatedSeason) {
+        throw new Error('Season not found');
+      }
+
+      const seasonInterface = this.seasonToInterface(updatedSeason);
+      seasonInterface.highlights = highlights as any;
+
+      return seasonInterface;
     } catch (error: any) {
-      logger.error('Error generating highlights:', error);
+      secureLog('error', 'Error generating highlights:', error);
       throw error;
     }
   }
@@ -185,7 +268,7 @@ class SeasonService {
         data: season
       });
     } catch (error: any) {
-      logger.error('Error creating season:', error);
+      secureLog('error', 'Error creating season:', error);
       res.status(500).json({ error: 'Failed to create season' });
     }
   }
@@ -197,29 +280,32 @@ class SeasonService {
     try {
       const { userId, organizationId, status } = req.query;
       
-      const query: any = {};
+      const where: any = {};
       
-      if (userId) {
-        query.userId = new Types.ObjectId(userId as string);
-      }
-      if (organizationId) {
-        query.organizationId = new Types.ObjectId(organizationId as string);
-      }
+      // Note: userId and organizationId would need to be in metadata or separate table
       if (status) {
-        query.status = status;
+        where.isActive = status === 'active';
       }
       
-      const seasons = await Season.find(query)
-        .populate('odysseys')
-        .sort({ startDate: -1 })
-        .lean();
+      const seasons = await prisma.season.findMany({
+        where,
+        include: {
+          quests: true,
+          seasonBoosts: true
+        },
+        orderBy: {
+          startDate: 'desc'
+        }
+      });
+      
+      const seasonInterfaces = seasons.map(season => this.seasonToInterface(season));
       
       res.json({
         success: true,
-        data: seasons
+        data: seasonInterfaces
       });
     } catch (error: any) {
-      logger.error('Error getting seasons:', error);
+      secureLog('error', 'Error getting seasons:', error);
       res.status(500).json({ error: 'Failed to get seasons' });
     }
   }
@@ -231,9 +317,13 @@ class SeasonService {
     try {
       const { id } = req.params;
       
-      const season = await Season.findById(id)
-        .populate('odysseys')
-        .lean();
+      const season = await prisma.season.findUnique({
+        where: { id },
+        include: {
+          quests: true,
+          seasonBoosts: true
+        }
+      });
       
       if (!season) {
         res.status(404).json({ error: 'Season not found' });
@@ -242,10 +332,10 @@ class SeasonService {
       
       res.json({
         success: true,
-        data: season
+        data: this.seasonToInterface(season)
       });
     } catch (error: any) {
-      logger.error('Error getting season:', error);
+      secureLog('error', 'Error getting season:', error);
       res.status(500).json({ error: 'Failed to get season' });
     }
   }
@@ -270,7 +360,7 @@ class SeasonService {
         data: season
       });
     } catch (error: any) {
-      logger.error('Error adding odyssey:', error);
+      secureLog('error', 'Error adding odyssey:', error);
       res.status(400).json({ error: error.message || 'Failed to add odyssey' });
     }
   }
@@ -295,7 +385,7 @@ class SeasonService {
         data: season
       });
     } catch (error: any) {
-      logger.error('Error enabling season boost:', error);
+      secureLog('error', 'Error enabling season boost:', error);
       res.status(400).json({ error: error.message || 'Failed to enable season boost' });
     }
   }
@@ -314,11 +404,10 @@ class SeasonService {
         data: season
       });
     } catch (error: any) {
-      logger.error('Error generating highlights:', error);
+      secureLog('error', 'Error generating highlights:', error);
       res.status(400).json({ error: error.message || 'Failed to generate highlights' });
     }
   }
 }
 
 export default new SeasonService();
-

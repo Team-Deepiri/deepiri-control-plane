@@ -1,14 +1,64 @@
 import { Request, Response } from 'express';
-import mongoose, { Types } from 'mongoose';
 import { createLogger } from '@deepiri/shared-utils';
-import Odyssey, { IOdyssey, OdysseyScale } from '../models/Odyssey';
-import Objective from '../models/Objective';
+import { secureLog } from '@deepiri/shared-utils';
+import prisma from '../db';
+import { IOdyssey, OdysseyScale } from '../models/Odyssey';
 
 const logger = createLogger('odyssey-service');
 
 class OdysseyService {
   /**
-   * Create a new odyssey
+   * Convert Prisma Quest to IOdyssey
+   */
+  private questToOdyssey(quest: any): IOdyssey {
+    const milestones = (quest.questMilestones || []).map((m: any) => ({
+      id: m.id,
+      title: m.title,
+      description: m.description || undefined,
+      completed: m.completed,
+      completedAt: m.completedAt || undefined,
+      momentumReward: m.momentumReward
+    }));
+
+    const objectives = (quest.tasks || []).map((t: any) => t.id);
+
+    return {
+      userId: quest.userId,
+      title: quest.title,
+      description: quest.description || undefined,
+      scale: quest.scale as OdysseyScale,
+      minimumHoursBeforeSelection: undefined, // Not in schema yet
+      organizationId: undefined, // Not in schema yet
+      seasonId: quest.seasonId || undefined,
+      status: quest.status as 'planning' | 'active' | 'completed' | 'paused' | 'cancelled',
+      objectives,
+      milestones,
+      progress: {
+        objectivesCompleted: quest.objectivesCompleted,
+        totalObjectives: quest.totalObjectives,
+        milestonesCompleted: milestones.filter((m: any) => m.completed).length,
+        totalMilestones: milestones.length,
+        progressPercentage: quest.progressPercentage
+      },
+      aiGeneratedBrief: {
+        animation: quest.aiAnimation || undefined,
+        summary: quest.aiSummary || '',
+        generatedAt: quest.createdAt
+      },
+      progressMap: {
+        currentStage: quest.currentStage,
+        stages: [] // Would need separate table or JSONB field
+      },
+      startDate: quest.startDate,
+      endDate: quest.endDate || undefined,
+      metadata: (quest.metadata as Record<string, any>) || undefined,
+      createdAt: quest.createdAt,
+      updatedAt: quest.updatedAt
+    };
+  }
+
+  /**
+   * Create a new odyssey (quest)
    */
   async createOdyssey(
     userId: string,
@@ -20,29 +70,32 @@ class OdysseyService {
     seasonId?: string
   ): Promise<IOdyssey> {
     try {
-      const odyssey = new Odyssey({
-        userId: new Types.ObjectId(userId),
-        title,
-        description,
-        scale,
-        minimumHoursBeforeSelection,
-        organizationId: organizationId ? new Types.ObjectId(organizationId) : undefined,
-        seasonId: seasonId ? new Types.ObjectId(seasonId) : undefined,
-        status: 'planning',
-        progress: {
+      const quest = await prisma.quest.create({
+        data: {
+          userId,
+          title,
+          description,
+          scale,
+          seasonId: seasonId || undefined,
+          status: 'planning',
           objectivesCompleted: 0,
           totalObjectives: 0,
-          milestonesCompleted: 0,
-          totalMilestones: 0,
-          progressPercentage: 0
+          progressPercentage: 0,
+          currentStage: 'start',
+          metadata: {
+            minimumHoursBeforeSelection,
+            organizationId
+          }
+        },
+        include: {
+          questMilestones: true,
+          tasks: true
         }
       });
       
-      await odyssey.save();
-      
-      return odyssey;
+      return this.questToOdyssey(quest);
     } catch (error: any) {
-      logger.error('Error creating odyssey:', error);
+      secureLog('error', 'Error creating odyssey:', error);
       throw error;
     }
   }
@@ -52,27 +105,42 @@ class OdysseyService {
    */
   async addObjective(odysseyId: string, objectiveId: string): Promise<IOdyssey> {
     try {
-      const odyssey = await Odyssey.findById(odysseyId);
-      
-      if (!odyssey) {
+      // Update task to link to quest
+      await prisma.task.update({
+        where: { id: objectiveId },
+        data: { questId: odysseyId }
+      });
+
+      // Update quest progress
+      const quest = await prisma.quest.findUnique({
+        where: { id: odysseyId },
+        include: {
+          questMilestones: true,
+          tasks: true
+        }
+      });
+
+      if (!quest) {
         throw new Error('Odyssey not found');
       }
+
+      const updatedQuest = await prisma.quest.update({
+        where: { id: odysseyId },
+        data: {
+          totalObjectives: quest.tasks.length + 1,
+          progressPercentage: quest.totalObjectives > 0 
+            ? (quest.objectivesCompleted / (quest.totalObjectives + 1)) * 100 
+            : 0
+        },
+        include: {
+          questMilestones: true,
+          tasks: true
+        }
+      });
       
-      if (!odyssey.objectives.includes(new Types.ObjectId(objectiveId))) {
-        odyssey.objectives.push(new Types.ObjectId(objectiveId));
-        odyssey.progress.totalObjectives += 1;
-        
-        // Update objective to link to odyssey
-        await Objective.findByIdAndUpdate(objectiveId, {
-          odysseyId: new Types.ObjectId(odysseyId)
-        });
-        
-        await odyssey.save();
-      }
-      
-      return odyssey;
+      return this.questToOdyssey(updatedQuest);
     } catch (error: any) {
-      logger.error('Error adding objective to odyssey:', error);
+      secureLog('error', 'Error adding objective to odyssey:', error);
       throw error;
     }
   }
@@ -87,27 +155,32 @@ class OdysseyService {
     momentumReward: number = 0
   ): Promise<IOdyssey> {
     try {
-      const odyssey = await Odyssey.findById(odysseyId);
-      
-      if (!odyssey) {
+      await prisma.questMilestone.create({
+        data: {
+          questId: odysseyId,
+          title,
+          description,
+          momentumReward,
+          completed: false,
+          sortOrder: 0
+        }
+      });
+
+      const quest = await prisma.quest.findUnique({
+        where: { id: odysseyId },
+        include: {
+          questMilestones: true,
+          tasks: true
+        }
+      });
+
+      if (!quest) {
         throw new Error('Odyssey not found');
       }
-      
-      const milestoneId = new Types.ObjectId().toString();
-      odyssey.milestones.push({
-        id: milestoneId,
-        title,
-        description,
-        completed: false,
-        momentumReward
-      });
-      
-      odyssey.progress.totalMilestones += 1;
-      await odyssey.save();
-      
-      return odyssey;
+
+      return this.questToOdyssey(quest);
     } catch (error: any) {
-      logger.error('Error adding milestone:', error);
+      secureLog('error', 'Error adding milestone:', error);
       throw error;
     }
   }
@@ -117,27 +190,45 @@ class OdysseyService {
    */
   async completeMilestone(odysseyId: string, milestoneId: string): Promise<IOdyssey> {
     try {
-      const odyssey = await Odyssey.findById(odysseyId);
-      
-      if (!odyssey) {
-        throw new Error('Odyssey not found');
-      }
-      
-      const milestone = odyssey.milestones.find(m => m.id === milestoneId);
-      if (!milestone) {
+      const milestone = await prisma.questMilestone.findUnique({
+        where: { id: milestoneId }
+      });
+
+      if (!milestone || milestone.questId !== odysseyId) {
         throw new Error('Milestone not found');
       }
-      
-      if (!milestone.completed) {
-        milestone.completed = true;
-        milestone.completedAt = new Date();
-        odyssey.progress.milestonesCompleted += 1;
-        
-        // Award momentum if reward is set
-        if (milestone.momentumReward > 0) {
+
+      if (milestone.completed) {
+        // Already completed, just return the quest
+        const quest = await prisma.quest.findUnique({
+          where: { id: odysseyId },
+          include: {
+            questMilestones: true,
+            tasks: true
+          }
+        });
+        if (!quest) throw new Error('Odyssey not found');
+        return this.questToOdyssey(quest);
+      }
+
+      // Update milestone
+      await prisma.questMilestone.update({
+        where: { id: milestoneId },
+        data: {
+          completed: true,
+          completedAt: new Date()
+        }
+      });
+
+      // Award momentum if reward is set
+      if (milestone.momentumReward > 0) {
+        const quest = await prisma.quest.findUnique({
+          where: { id: odysseyId }
+        });
+        if (quest) {
           const momentumService = (await import('./momentumService')).default;
           await momentumService.awardMomentum(
-            odyssey.userId.toString(),
+            quest.userId,
             milestone.momentumReward,
             'tasks'
           );
@@ -147,25 +238,35 @@ class OdysseyService {
             const axios = (await import('axios')).default;
             const REALTIME_GATEWAY_URL = process.env.REALTIME_GATEWAY_URL || 'http://realtime-gateway:5008';
             await axios.post(`${REALTIME_GATEWAY_URL}/emit/gamification`, {
-              userId: odyssey.userId.toString(),
+              userId: quest.userId,
               type: 'milestone_completed',
               data: {
-                odysseyId: odyssey._id.toString(),
+                odysseyId: quest.id,
                 milestoneTitle: milestone.title,
                 momentumEarned: milestone.momentumReward
               }
             });
           } catch (error: any) {
-            logger.error('Failed to emit milestone completed event:', error.message);
+            secureLog('error', 'Failed to emit milestone completed event:', error.message);
           }
         }
-        
-        await odyssey.save();
       }
-      
-      return odyssey;
+
+      const quest = await prisma.quest.findUnique({
+        where: { id: odysseyId },
+        include: {
+          questMilestones: true,
+          tasks: true
+        }
+      });
+
+      if (!quest) {
+        throw new Error('Odyssey not found');
+      }
+
+      return this.questToOdyssey(quest);
     } catch (error: any) {
-      logger.error('Error completing milestone:', error);
+      secureLog('error', 'Error completing milestone:', error);
       throw error;
     }
   }
@@ -197,7 +298,7 @@ class OdysseyService {
         data: odyssey
       });
     } catch (error: any) {
-      logger.error('Error creating odyssey:', error);
+      secureLog('error', 'Error creating odyssey:', error);
       res.status(500).json({ error: 'Failed to create odyssey' });
     }
   }
@@ -215,29 +316,34 @@ class OdysseyService {
         return;
       }
       
-      const query: any = { userId: new Types.ObjectId(userId) };
+      const where: any = { userId };
       
       if (status) {
-        query.status = status;
-      }
-      if (organizationId) {
-        query.organizationId = new Types.ObjectId(organizationId as string);
+        where.status = status;
       }
       if (seasonId) {
-        query.seasonId = new Types.ObjectId(seasonId as string);
+        where.seasonId = seasonId as string;
       }
       
-      const odysseys = await Odyssey.find(query)
-        .populate('objectives')
-        .sort({ createdAt: -1 })
-        .lean();
+      const quests = await prisma.quest.findMany({
+        where,
+        include: {
+          questMilestones: true,
+          tasks: true
+        },
+        orderBy: {
+          createdAt: 'desc'
+        }
+      });
+      
+      const odysseys = quests.map(quest => this.questToOdyssey(quest));
       
       res.json({
         success: true,
         data: odysseys
       });
     } catch (error: any) {
-      logger.error('Error getting odysseys:', error);
+      secureLog('error', 'Error getting odysseys:', error);
       res.status(500).json({ error: 'Failed to get odysseys' });
     }
   }
@@ -249,21 +355,25 @@ class OdysseyService {
     try {
       const { id } = req.params;
       
-      const odyssey = await Odyssey.findById(id)
-        .populate('objectives')
-        .lean();
+      const quest = await prisma.quest.findUnique({
+        where: { id },
+        include: {
+          questMilestones: true,
+          tasks: true
+        }
+      });
       
-      if (!odyssey) {
+      if (!quest) {
         res.status(404).json({ error: 'Odyssey not found' });
         return;
       }
       
       res.json({
         success: true,
-        data: odyssey
+        data: this.questToOdyssey(quest)
       });
     } catch (error: any) {
-      logger.error('Error getting odyssey:', error);
+      secureLog('error', 'Error getting odyssey:', error);
       res.status(500).json({ error: 'Failed to get odyssey' });
     }
   }
@@ -288,7 +398,7 @@ class OdysseyService {
         data: odyssey
       });
     } catch (error: any) {
-      logger.error('Error adding objective:', error);
+      secureLog('error', 'Error adding objective:', error);
       res.status(400).json({ error: error.message || 'Failed to add objective' });
     }
   }
@@ -313,7 +423,7 @@ class OdysseyService {
         data: odyssey
       });
     } catch (error: any) {
-      logger.error('Error adding milestone:', error);
+      secureLog('error', 'Error adding milestone:', error);
       res.status(400).json({ error: error.message || 'Failed to add milestone' });
     }
   }
@@ -332,7 +442,7 @@ class OdysseyService {
         data: odyssey
       });
     } catch (error: any) {
-      logger.error('Error completing milestone:', error);
+      secureLog('error', 'Error completing milestone:', error);
       res.status(400).json({ error: error.message || 'Failed to complete milestone' });
     }
   }
@@ -345,27 +455,33 @@ class OdysseyService {
       const { id } = req.params;
       const updates = req.body;
       
-      const odyssey = await Odyssey.findByIdAndUpdate(
-        id,
-        { $set: updates },
-        { new: true }
-      );
+      // Map IOdyssey fields to Quest fields
+      const questUpdates: any = {};
+      if (updates.title) questUpdates.title = updates.title;
+      if (updates.description !== undefined) questUpdates.description = updates.description;
+      if (updates.status) questUpdates.status = updates.status;
+      if (updates.scale) questUpdates.scale = updates.scale;
+      if (updates.seasonId) questUpdates.seasonId = updates.seasonId;
+      if (updates.endDate) questUpdates.endDate = new Date(updates.endDate);
       
-      if (!odyssey) {
-        res.status(404).json({ error: 'Odyssey not found' });
-        return;
-      }
+      const quest = await prisma.quest.update({
+        where: { id },
+        data: questUpdates,
+        include: {
+          questMilestones: true,
+          tasks: true
+        }
+      });
       
       res.json({
         success: true,
-        data: odyssey
+        data: this.questToOdyssey(quest)
       });
     } catch (error: any) {
-      logger.error('Error updating odyssey:', error);
+      secureLog('error', 'Error updating odyssey:', error);
       res.status(500).json({ error: 'Failed to update odyssey' });
     }
   }
 }
 
 export default new OdysseyService();
-

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { createLogger } from '@deepiri/shared-utils';
+import { secureLog } from '@deepiri/shared-utils';
 import prisma from './db';
 
 const logger = createLogger('dependency-graph-service');
@@ -13,7 +14,7 @@ class DependencyGraphService {
       const dependencies = await this.getDependenciesForTask(taskId);
       res.json(dependencies);
     } catch (error: any) {
-      logger.error('Error getting dependencies:', error);
+      secureLog('error', 'Error getting dependencies:', error);
       res.status(500).json({ error: 'Failed to get dependencies' });
     }
   }
@@ -30,7 +31,7 @@ class DependencyGraphService {
       const dependency = await this.addDependencyToTask(taskId, dependsOn, dependencyType as DependencyType, userId);
       res.json(dependency);
     } catch (error: any) {
-      logger.error('Error adding dependency:', error);
+      secureLog('error', 'Error adding dependency:', error);
       res.status(500).json({ error: error.message || 'Failed to add dependency' });
     }
   }
@@ -78,10 +79,10 @@ class DependencyGraphService {
         }
       });
 
-      logger.info('Task dependency added', { taskId, dependsOn, dependencyType });
+      secureLog('info', 'Task dependency added', { taskId, dependsOn, dependencyType });
       return dependency;
     } catch (error) {
-      logger.error('Error adding dependency:', error);
+      secureLog('error', 'Error adding dependency:', error);
       throw error;
     }
   }
@@ -104,13 +105,13 @@ class DependencyGraphService {
         orderBy: { createdAt: 'asc' }
       });
 
-      return dependencies.map(dep => ({
+      return dependencies.map((dep: typeof dependencies[0]) => ({
         task: dep.dependsOnTask,
         type: dep.dependencyType,
         createdAt: dep.createdAt
       }));
     } catch (error) {
-      logger.error('Error getting dependencies:', error);
+      secureLog('error', 'Error getting dependencies:', error);
       throw error;
     }
   }
@@ -153,14 +154,14 @@ class DependencyGraphService {
           select: { dependsOnTaskId: true }
         });
         
-        deps.forEach(dep => {
+        deps.forEach((dep: { dependsOnTaskId: string }) => {
           stack.push(dep.dependsOnTaskId);
         });
       }
 
       return false;
     } catch (error) {
-      logger.error('Error checking for cycles:', error);
+      secureLog('error', 'Error checking for cycles:', error);
       return true; // Fail safe - assume cycle exists if we can't check
     }
   }

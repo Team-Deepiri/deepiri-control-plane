@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { createLogger } from '@deepiri/shared-utils';
+import { secureLog } from '@deepiri/shared-utils';
 import prisma from '../db';
 
 const logger = createLogger('momentum-service');
@@ -53,7 +54,7 @@ class MomentumService {
       
       return profile;
     } catch (error: any) {
-      logger.error('Error getting momentum profile:', error);
+      secureLog('error', 'Error getting momentum profile:', error);
       throw error;
     }
   }
@@ -128,7 +129,7 @@ class MomentumService {
           }
         });
 
-        logger.info(`User ${userId} leveled up to level ${newLevel}`);
+        secureLog('info', `User ${userId} leveled up to level ${newLevel}`);
         
         // Emit level up event via realtime gateway
         try {
@@ -143,7 +144,7 @@ class MomentumService {
             }
           });
         } catch (error: any) {
-          logger.error('Failed to emit level up event:', error.message);
+          secureLog('error', 'Failed to emit level up event:', error.message);
         }
       }
       
@@ -162,12 +163,12 @@ class MomentumService {
           }
         });
       } catch (error: any) {
-        logger.error('Failed to emit momentum event:', error.message);
+        secureLog('error', 'Failed to emit momentum event:', error.message);
       }
       
       return updated;
     } catch (error: any) {
-      logger.error('Error awarding momentum:', error);
+      secureLog('error', 'Error awarding momentum:', error);
       throw error;
     }
   }
@@ -202,12 +203,12 @@ class MomentumService {
             featuresShipped: profile.featuresShipped,
             designEdits: profile.designEdits
           },
-          levelHistory: profile.levelProgress.map(lp => ({
+          levelHistory: profile.levelProgress.map((lp: typeof profile.levelProgress[0]) => ({
             level: lp.level,
             reachedAt: lp.reachedAt,
             totalMomentum: lp.totalMomentumAtTime
           })),
-          achievements: profile.achievements.map(a => ({
+          achievements: profile.achievements.map((a: typeof profile.achievements[0]) => ({
             achievementId: a.achievementId,
             name: a.name,
             description: a.description,
@@ -221,7 +222,7 @@ class MomentumService {
         }
       });
     } catch (error: any) {
-      logger.error('Error getting profile:', error);
+      secureLog('error', 'Error getting profile:', error);
       res.status(500).json({ error: 'Failed to get momentum profile' });
     }
   }
@@ -269,7 +270,7 @@ class MomentumService {
         }
       });
     } catch (error: any) {
-      logger.error('Error awarding momentum:', error);
+      secureLog('error', 'Error awarding momentum:', error);
       res.status(500).json({ error: 'Failed to award momentum' });
     }
   }
@@ -305,7 +306,7 @@ class MomentumService {
       
       res.json({
         success: true,
-        data: profiles.map((profile, index) => ({
+        data: profiles.map((profile: typeof profiles[0], index: number) => ({
           rank: index + 1,
           userId: profile.userId,
           totalMomentum: profile.totalMomentum,
@@ -323,7 +324,7 @@ class MomentumService {
         }))
       });
     } catch (error: any) {
-      logger.error('Error getting ranking:', error);
+      secureLog('error', 'Error getting ranking:', error);
       res.status(500).json({ error: 'Failed to get ranking' });
     }
   }
@@ -364,7 +365,7 @@ class MomentumService {
         }
       });
     } catch (error: any) {
-      logger.error('Error getting user rank:', error);
+      secureLog('error', 'Error getting user rank:', error);
       res.status(500).json({ error: 'Failed to get user rank' });
     }
   }

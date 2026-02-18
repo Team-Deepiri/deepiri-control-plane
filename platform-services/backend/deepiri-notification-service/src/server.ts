@@ -5,7 +5,7 @@ import { Server } from 'socket.io';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
-import winston from 'winston';
+import { secureLog } from '@deepiri/shared-utils';
 import { router, websocket } from './index';
 
 dotenv.config();
@@ -18,12 +18,6 @@ const io = new Server(httpServer, {
 
 const PORT: number = parseInt(process.env.PORT || '5005', 10);
 
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.json(),
-  transports: [new winston.transports.Console({ format: winston.format.simple() })]
-});
-
 app.use(helmet());
 app.use(cors());
 app.use(express.json());
@@ -33,6 +27,12 @@ app.use(express.json());
 
 websocket.initialize(io);
 
+// Start event consumption
+import { startEventConsumption } from './streaming/eventConsumer';
+startEventConsumption(io).catch((err) => {
+  secureLog('error', 'Failed to start event consumption:', err);
+});
+
 app.get('/health', (req: Request, res: Response) => {
   res.json({ status: 'healthy', service: 'notification-service', timestamp: new Date().toISOString() });
 });
@@ -40,13 +40,13 @@ app.get('/health', (req: Request, res: Response) => {
 app.use('/', router);
 
 const errorHandler: ErrorRequestHandler = (err, req, res, next) => {
-  logger.error('Notification Service error:', err);
+  secureLog('error', 'Notification Service error:', err);
   res.status(500).json({ error: 'Internal server error' });
 };
 app.use(errorHandler);
 
 httpServer.listen(PORT, () => {
-  logger.info(`Notification Service running on port ${PORT}`);
+  secureLog('info', `Notification Service running on port ${PORT}`);
 });
 
 export { app, io };

@@ -3,19 +3,13 @@ import express, { Express, Request, Response, ErrorRequestHandler } from 'expres
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
-import winston from 'winston';
+import { secureLog } from '@deepiri/shared-utils';
 import routes from './index';
 
 dotenv.config();
 
 const app: Express = express();
 const PORT: number = parseInt(process.env.PORT || '5004', 10);
-
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.json(),
-  transports: [new winston.transports.Console({ format: winston.format.simple() })]
-});
 
 app.use(helmet());
 app.use(cors());
@@ -31,13 +25,20 @@ app.get('/health', (req: Request, res: Response) => {
 app.use('/', routes);
 
 const errorHandler: ErrorRequestHandler = (err, req, res, next) => {
-  logger.error('Platform Analytics Service error:', err);
+  secureLog('error', 'Platform Analytics Service error:', err);
   res.status(500).json({ error: 'Internal server error' });
 };
 app.use(errorHandler);
 
+// Start event consumption
+import { startEventConsumption } from './streaming/eventConsumer';
+
+startEventConsumption().catch((err) => {
+  secureLog('error', 'Failed to start event consumption:', err);
+});
+
 app.listen(PORT, () => {
-  logger.info(`Platform Analytics Service running on port ${PORT}`);
+  secureLog('info', `Platform Analytics Service running on port ${PORT}`);
 });
 
 export default app;
