@@ -27,3 +27,8 @@ export type {
   ValidationError,
 } from './config';
 
+// Auth & Cache Utilities
+export { hashApiKey } from './cryptoUtils';
+export { createRedisClient } from './redisClient';
+export type { ApiKeyScope, ApiKeyCachePayload } from './types';
+
