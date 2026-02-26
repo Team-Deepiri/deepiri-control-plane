@@ -4,7 +4,7 @@ import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
-import winston from 'winston';
+import { logger, secureLog } from '@deepiri/shared-utils';
 import { setupGamificationEvents, GamificationEventEmitter } from './gamificationEvents';
 import { validateBodyIfPresent } from './middleware/inputValidation';
 
@@ -18,12 +18,6 @@ const io = new Server(httpServer, {
 
 const PORT: number = parseInt(process.env.PORT || '5008', 10);
 
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.json(),
-  transports: [new winston.transports.Console({ format: winston.format.simple() })]
-});
-
 app.use(cors());
 app.use(helmet());
 app.use(express.json({ limit: '100kb' }));
@@ -35,7 +29,7 @@ const gamificationEmitter = setupGamificationEvents(io);
 // Start event consumption for streaming events
 import { startEventConsumption } from './streaming/eventConsumer';
 startEventConsumption(io).catch((err) => {
-  logger.error('Failed to start event consumption:', err);
+  secureLog('error', 'Failed to start event consumption:', err);
 });
 
 // HTTP endpoint to emit gamification events (called by engagement service)
@@ -80,7 +74,7 @@ app.post('/emit/gamification', (req: Request, res: Response) => {
 export { gamificationEmitter };
 
 io.on('connection', (socket) => {
-  logger.info(`WebSocket client connected: ${socket.id}`);
+  secureLog('info', `WebSocket client connected: ${socket.id}`);
   
   socket.emit('connection_confirmed', {
     socketId: socket.id,
@@ -89,16 +83,16 @@ io.on('connection', (socket) => {
   
   socket.on('join_user_room', (userId: string) => {
     socket.join(`user_${userId}`);
-    logger.info(`User ${userId} joined room`);
+    secureLog('info', `User ${userId} joined room`);
   });
   
   socket.on('join_adventure_room', (adventureId: string) => {
     socket.join(`adventure_${adventureId}`);
-    logger.info(`User joined adventure room: ${adventureId}`);
+    secureLog('info', `User joined adventure room: ${adventureId}`);
   });
   
   socket.on('disconnect', (reason: string) => {
-    logger.info(`WebSocket client disconnected: ${socket.id}, reason: ${reason}`);
+    secureLog('info', `WebSocket client disconnected: ${socket.id}, reason: ${reason}`);
   });
 });
 
@@ -112,8 +106,8 @@ app.get('/health', (req: Request, res: Response) => {
 });
 
 httpServer.listen(PORT, () => {
-  logger.info(`Realtime Gateway running on port ${PORT}`);
-  logger.info(`Gamification events enabled`);
+  secureLog('info', `Realtime Gateway running on port ${PORT}`);
+  secureLog('info', `Gamification events enabled`);
 });
 
 export { app, io };
