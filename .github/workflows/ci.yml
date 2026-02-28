@@ -59,7 +59,7 @@ jobs:
       - name: Python deps and tests (diri-cyrex)
         run: |
           cd diri-cyrex
-          pip install -r requirements.txt
+          pip install -r requirements/requirements.txt
           pytest -q || echo "Tests failed or not configured"
       
       - name: Security scan (Python)

@@ -3,24 +3,17 @@ import express, { Express, Request, Response, ErrorRequestHandler } from 'expres
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
-import winston from 'winston';
+import { secureLog } from '@deepiri/shared-utils';
 import axios from 'axios';
-import { validate, generateBodyValidations } from './middleware/inputValidation';
 
 dotenv.config();
 
 const app: Express = express();
 const PORT: number = parseInt(process.env.PORT || '5007', 10);
 
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.json(),
-  transports: [new winston.transports.Console({ format: winston.format.simple() })]
-});
-
 app.use(helmet());
 app.use(cors());
-app.use(express.json({ limit: '100kb' }));
+app.use(express.json());
 
 // PostgreSQL connection via Prisma (if needed for challenge storage)
 // For now, challenges are generated via Cyrex API
@@ -31,24 +24,24 @@ app.get('/health', (req: Request, res: Response) => {
   res.json({ status: 'healthy', service: 'challenge-service', timestamp: new Date().toISOString() });
 });
 
-app.post('/generate', validate(generateBodyValidations()), async (req: Request, res: Response) => {
+app.post('/generate', async (req: Request, res: Response) => {
   try {
     const response = await axios.post(`${CYREX_URL}/agent/challenge/generate`, req.body);
     res.json(response.data);
   } catch (error: any) {
-    logger.error('Challenge generation error:', error);
+    secureLog('error', 'Challenge generation error:', error);
     res.status(500).json({ error: 'Failed to generate challenge' });
   }
 });
 
 const errorHandler: ErrorRequestHandler = (err, req, res, next) => {
-  logger.error('Challenge Service error:', err);
+  secureLog('error', 'Challenge Service error:', err);
   res.status(500).json({ error: 'Internal server error' });
 };
 app.use(errorHandler);
 
 app.listen(PORT, () => {
-  logger.info(`Challenge Service running on port ${PORT}`);
+  secureLog('info', `Challenge Service running on port ${PORT}`);
 });
 
 export default app;
