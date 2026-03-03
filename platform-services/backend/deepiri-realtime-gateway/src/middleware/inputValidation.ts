@@ -4,6 +4,15 @@ import { Request, Response, NextFunction } from 'express';
 import { body, validationResult, ValidationChain } from 'express-validator';
 import winston from 'winston';
 
+type BodyValidator = (body: Record<string, unknown>) => string | null;
+
+interface BodyValidationOptions {
+  required?: boolean;
+  allowedFields?: string[];
+  validators?: BodyValidator[];
+  sanitizeBody?: boolean;
+}
+
 const logger = winston.createLogger({
   level: 'info',
   format: winston.format.json(),
@@ -12,6 +21,58 @@ const logger = winston.createLogger({
 
 const MAX_BODY_KEYS = 50;
 const MAX_STRING_VALUE_LENGTH = 10000;
+const ALLOWED_GAMIFICATION_EVENT_TYPES = new Set([
+  'momentum_awarded',
+  'level_up',
+  'streak_updated',
+  'boost_activated',
+  'objective_completed',
+  'milestone_completed',
+  'reward_earned',
+]);
+
+const sanitizeValue = (value: unknown): unknown => {
+  if (typeof value === 'string') {
+    return value.trim();
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeValue(item));
+  }
+
+  if (value && typeof value === 'object') {
+    const sanitizedRecord: Record<string, unknown> = {};
+    for (const [key, nestedValue] of Object.entries(value as Record<string, unknown>)) {
+      sanitizedRecord[key] = sanitizeValue(nestedValue);
+    }
+    return sanitizedRecord;
+  }
+
+  return value;
+};
+
+const respondValidationError = (
+  req: Request,
+  res: Response,
+  errors: Array<{ field: string; message: string; value?: unknown }>,
+): void => {
+  const requestId = (req.headers['x-request-id'] as string) || 'unknown';
+
+  logger.warn('Body validation failed', {
+    requestId,
+    path: req.path,
+    method: req.method,
+    errors,
+  });
+
+  res.status(400).json({
+    success: false,
+    message: 'Validation failed',
+    requestId,
+    timestamp: new Date().toISOString(),
+    errors,
+  });
+};
 
 export const validate = (validations: ValidationChain[]) => {
   return async (req: Request, res: Response, next: NextFunction) => {
@@ -61,6 +122,66 @@ export const generateBodyValidations = () => [
     }),
 ];
 
+export const validateBody = (options: BodyValidationOptions = {}) => {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const errors: Array<{ field: string; message: string; value?: unknown }> = [];
+
+    if (options.required && (req.body === undefined || req.body === null)) {
+      errors.push({
+        field: 'body',
+        message: 'Request body is required',
+      });
+    }
+
+    if (req.body !== undefined && req.body !== null) {
+      if (typeof req.body !== 'object' || Array.isArray(req.body)) {
+        errors.push({
+          field: 'body',
+          message: 'Request body must be a JSON object',
+          value: req.body,
+        });
+      } else {
+        if (options.allowedFields) {
+          const unknownFields = Object.keys(req.body).filter(
+            (field) => !options.allowedFields?.includes(field),
+          );
+
+          if (unknownFields.length > 0) {
+            errors.push({
+              field: 'body',
+              message: `Unknown body fields provided: ${unknownFields.join(', ')}`,
+              value: unknownFields,
+            });
+          }
+        }
+
+        if (options.validators) {
+          for (const validator of options.validators) {
+            const message = validator(req.body as Record<string, unknown>);
+            if (message) {
+              errors.push({
+                field: 'body',
+                message,
+              });
+            }
+          }
+        }
+
+        if (options.sanitizeBody !== false) {
+          req.body = sanitizeValue(req.body);
+        }
+      }
+    }
+
+    if (errors.length > 0) {
+      respondValidationError(req, res, errors);
+      return;
+    }
+
+    next();
+  };
+};
+
 /** Run body validation only when request has a JSON body. */
 export const validateBodyIfPresent = () => {
   const validations = generateBodyValidations();
@@ -70,4 +191,27 @@ export const validateBodyIfPresent = () => {
     }
     next();
   };
+};
+
+export const validateEmitGamificationBody: BodyValidator = (body: Record<string, unknown>): string | null => {
+  if (!body.userId || typeof body.userId !== 'string' || body.userId.trim().length === 0) {
+    return 'userId is required and must be a non-empty string';
+  }
+
+  if (!body.type || typeof body.type !== 'string') {
+    return 'type is required and must be a string';
+  }
+
+  const eventType = body.type.trim();
+  if (!ALLOWED_GAMIFICATION_EVENT_TYPES.has(eventType)) {
+    return `type must be one of: ${Array.from(ALLOWED_GAMIFICATION_EVENT_TYPES).join(', ')}`;
+  }
+
+  if (!body.data || typeof body.data !== 'object' || Array.isArray(body.data)) {
+    return 'data is required and must be a JSON object';
+  }
+
+  body.userId = body.userId.trim();
+  body.type = eventType;
+  return null;
 };
