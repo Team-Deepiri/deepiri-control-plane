@@ -6,7 +6,12 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 import winston from 'winston';
 import { setupGamificationEvents, GamificationEventEmitter } from './gamificationEvents';
-import { validateBody, validateEmitGamificationBody } from './middleware/inputValidation';
+import {
+  validateBody,
+  validateEmitGamificationBody,
+  validateHeaders,
+  validateQuery,
+} from './middleware/inputValidation';
 
 dotenv.config();
 
@@ -40,6 +45,8 @@ startEventConsumption(io).catch((err) => {
 // HTTP endpoint to emit gamification events (called by engagement service)
 app.post(
   '/emit/gamification',
+  validateHeaders({ allowedFields: ['authorization', 'x-request-id', 'x-api-key'] }),
+  validateQuery({ allowedFields: [] }),
   validateBody({
     required: true,
     allowedFields: ['userId', 'type', 'data'],
