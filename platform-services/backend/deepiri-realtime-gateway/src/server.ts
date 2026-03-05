@@ -1,6 +1,7 @@
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import express, { Express, Request, Response } from 'express';
+import express, { Express, NextFunction, Request, Response } from 'express';
+import { randomUUID } from 'crypto';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
@@ -32,6 +33,38 @@ const logger = winston.createLogger({
 app.use(cors());
 app.use(helmet());
 app.use(express.json({ limit: '100kb' }));
+
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const incomingRequestId = req.headers['x-request-id'];
+  const requestId =
+    typeof incomingRequestId === 'string' && incomingRequestId.trim().length > 0
+      ? incomingRequestId.trim()
+      : randomUUID();
+
+  res.locals.requestId = requestId;
+  res.setHeader('x-request-id', requestId);
+
+  const startedAt = Date.now();
+
+  logger.info('Incoming request', {
+    requestId,
+    method: req.method,
+    path: req.path,
+    ip: req.ip,
+  });
+
+  res.on('finish', () => {
+    logger.info('Request completed', {
+      requestId,
+      method: req.method,
+      path: req.path,
+      statusCode: res.statusCode,
+      durationMs: Date.now() - startedAt,
+    });
+  });
+
+  next();
+});
 
 // Setup gamification events
 const gamificationEmitter = setupGamificationEvents(io);
@@ -121,6 +154,31 @@ app.get('/health', (req: Request, res: Response) => {
     service: 'realtime-gateway',
     connections: io.sockets.sockets.size,
     timestamp: new Date().toISOString()
+  });
+});
+
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+  const requestId =
+    (res.locals.requestId as string | undefined) ||
+    (typeof req.headers['x-request-id'] === 'string' ? req.headers['x-request-id'] : 'unknown');
+
+  logger.error('Unhandled server error', {
+    requestId,
+    method: req.method,
+    path: req.path,
+    error: err?.message || String(err),
+    stack: err?.stack,
+  });
+
+  if (res.headersSent) {
+    return next(err);
+  }
+
+  return res.status(500).json({
+    success: false,
+    message: 'Internal server error',
+    requestId,
+    timestamp: new Date().toISOString(),
   });
 });
 
