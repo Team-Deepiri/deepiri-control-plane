@@ -54,8 +54,10 @@ jobs:
       - name: List submodules
         id: list
         run: |
-          SUBS=$(git submodule --quiet foreach 'echo $path' | sed '/^\s*$/d')
-          echo "SUBMODULES=$SUBS" >> $GITHUB_ENV
+          echo "SUBMODULES<<EOF" >> $GITHUB_ENV
+          git submodule --quiet foreach 'echo $path' | sed '/^\s*$/d' >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
 
 
       - name: Build JSON matrix
