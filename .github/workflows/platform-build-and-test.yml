@@ -55,14 +55,15 @@ jobs:
         id: list
         run: |
           echo "SUBMODULES<<EOF" >> $GITHUB_ENV
-          git submodule --quiet foreach 'echo $path' >> $GITHUB_ENV
+          git submodule --quiet foreach 'echo $path' | sed '/^\s*$/d' >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
       - name: Build JSON matrix
         id: set-matrix
         run: |
-          modules=$(printf '%s\n' $SUBMODULES | jq -R . | jq -s .)
+          modules=$(printf '%s\n' "$SUBMODULES" | sed '/^\s*$/d' | jq -R . | jq -s .)
           echo "matrix={\"path\": $modules}" >> $GITHUB_OUTPUT
+
 
 # Run each submodule in parallel using a matrix
 
