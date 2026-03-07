@@ -63,7 +63,11 @@ jobs:
       - name: Build JSON matrix
         id: set-matrix
         run: |
-          modules=$(printf '%s\n' "$SUBMODULES" | sed '/^\s*$/d' | jq -R . | jq -s .)
+          modules=$(printf '%s\n' "$SUBMODULES" \
+            | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
+            | sed '/^[[:space:]]*$/d' \
+            | jq -R . \
+            | jq -s .)
           echo "matrix={\"path\": $modules}" >> $GITHUB_OUTPUT
 
 
