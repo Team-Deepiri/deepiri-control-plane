@@ -54,11 +54,11 @@ jobs:
       - name: List submodules
         id: list
         run: |
-          echo "SUBMODULES<<EOF" >> $GITHUB_ENV
-          git submodule --quiet foreach 'echo $path' | sed '/^\s*$/d' >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
-
-
+          {
+            echo "SUBMODULES<<EOF"
+            git submodule --quiet foreach 'echo $path' | sed '/^\s*$/d'
+            echo "EOF"
+          } >> $GITHUB_ENV
 
       - name: Build JSON matrix
         id: set-matrix
@@ -68,7 +68,11 @@ jobs:
             | sed '/^[[:space:]]*$/d' \
             | jq -R . \
             | jq -s .)
-          echo "matrix={\"path\": $modules}" >> $GITHUB_OUTPUT
+
+          echo "matrix<<EOF" >> $GITHUB_OUTPUT
+          echo "{\"path\": $modules}" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
 
 
 # Run each submodule in parallel using a matrix
