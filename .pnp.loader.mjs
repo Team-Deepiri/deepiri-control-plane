@@ -181,11 +181,6 @@ async function copyFileViaIndex(prelayout, postlayout, destinationFs, destinatio
   const sourceMode = sourceStat.mode & 511;
   const indexFileName = `${sourceHash}${sourceMode !== defaultMode ? sourceMode.toString(8) : ``}`;
   const indexPath = destinationFs.pathUtils.join(linkStrategy.indexPath, sourceHash.slice(0, 2), `${indexFileName}.dat`);
-  let AtomicBehavior;
-  ((AtomicBehavior2) => {
-    AtomicBehavior2[AtomicBehavior2["Lock"] = 0] = "Lock";
-    AtomicBehavior2[AtomicBehavior2["Rename"] = 1] = "Rename";
-  })(AtomicBehavior || (AtomicBehavior = {}));
   let atomicBehavior = 1 /* Rename */;
   let indexStat = await maybeLStat(destinationFs, indexPath);
   if (destinationStat) {
