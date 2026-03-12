@@ -287,3 +287,8 @@ Check that:
    Add `env_file: - .env-k8s/new-service.env` to the service definition
 
 
+
+
+
+
+

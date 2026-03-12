@@ -86,3 +86,31 @@ export function createLogger(serviceName: string = 'service'): winston.Logger {
 
   return logger;
 }
+
+/**
+ * Secure logging function that sanitizes sensitive data
+ * Usage: secureLog('info', 'message', { data })
+ */
+export function secureLog(level: 'info' | 'warn' | 'error' | 'debug', message: string, ...args: any[]): void {
+  const defaultLogger = createLogger('secure-log');
+  const logMethod = defaultLogger[level] || defaultLogger.info;
+  
+  // Sanitize sensitive data in arguments
+  const sanitizedArgs = args.map(arg => {
+    if (typeof arg === 'object' && arg !== null) {
+      const sanitized: any = { ...arg };
+      // Remove or mask sensitive fields
+      const sensitiveKeys = ['password', 'token', 'secret', 'apiKey', 'authorization', 'auth'];
+      for (const key of sensitiveKeys) {
+        if (key in sanitized) {
+          sanitized[key] = '***REDACTED***';
+        }
+      }
+      return sanitized;
+    }
+    return arg;
+  });
+  
+  logMethod(message, ...sanitizedArgs);
+}
+

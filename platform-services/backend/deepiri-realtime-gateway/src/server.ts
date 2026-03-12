@@ -2,9 +2,11 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import dotenv from 'dotenv';
-import { logger, secureLog } from '@deepiri/shared-utils';
+import { secureLog } from '@deepiri/shared-utils';
 import { setupGamificationEvents, GamificationEventEmitter } from './gamificationEvents';
+import { validateBodyIfPresent } from './middleware/inputValidation';
 
 dotenv.config();
 
@@ -17,7 +19,9 @@ const io = new Server(httpServer, {
 const PORT: number = parseInt(process.env.PORT || '5008', 10);
 
 app.use(cors());
-app.use(express.json());
+app.use(helmet());
+app.use(express.json({ limit: '100kb' }));
+app.use(validateBodyIfPresent());
 
 // Setup gamification events
 const gamificationEmitter = setupGamificationEvents(io);
