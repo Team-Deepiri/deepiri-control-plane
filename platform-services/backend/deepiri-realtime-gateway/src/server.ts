@@ -2,14 +2,12 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import dotenv from 'dotenv';
 import { logger, secureLog } from '@deepiri/shared-utils';
 import { setupGamificationEvents, GamificationEventEmitter } from './gamificationEvents';
-<<<<<<< Updated upstream
-=======
 import { validateBodyIfPresent } from './middleware/inputValidation';
 import { bodyParserConfig, requestSizeLimiter } from './middleware/requestLimits';
->>>>>>> Stashed changes
 
 dotenv.config();
 
@@ -22,9 +20,6 @@ const io = new Server(httpServer, {
 const PORT: number = parseInt(process.env.PORT || '5008', 10);
 
 app.use(cors());
-<<<<<<< Updated upstream
-app.use(express.json());
-=======
 app.use(helmet());
 
 // Request size limits (Issue 8)
@@ -32,7 +27,6 @@ app.use(requestSizeLimiter);
 app.use(express.json(bodyParserConfig.json));
 app.use(express.urlencoded(bodyParserConfig.urlencoded));
 app.use(validateBodyIfPresent());
->>>>>>> Stashed changes
 
 // Setup gamification events
 const gamificationEmitter = setupGamificationEvents(io);
