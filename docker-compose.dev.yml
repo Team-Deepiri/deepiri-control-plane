@@ -31,7 +31,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-deepiri}
     volumes:
       - postgres_dev_data:/var/lib/postgresql/data
-      - ./scripts/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./scripts/database/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     networks:
       - deepiri-dev-network
     healthcheck:

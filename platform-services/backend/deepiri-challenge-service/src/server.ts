@@ -5,6 +5,7 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 import { secureLog } from '@deepiri/shared-utils';
 import axios from 'axios';
+import { bodyParserConfig, requestSizeLimiter } from './middleware/requestLimits';
 
 dotenv.config();
 
@@ -13,7 +14,11 @@ const PORT: number = parseInt(process.env.PORT || '5007', 10);
 
 app.use(helmet());
 app.use(cors());
-app.use(express.json());
+
+// Request size limits (Issue 8)
+app.use(requestSizeLimiter);
+app.use(express.json(bodyParserConfig.json));
+app.use(express.urlencoded(bodyParserConfig.urlencoded));
 
 // PostgreSQL connection via Prisma (if needed for challenge storage)
 // For now, challenges are generated via Cyrex API
