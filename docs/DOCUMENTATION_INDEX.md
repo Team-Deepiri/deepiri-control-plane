@@ -12,7 +12,7 @@ Quick navigation to all documentation organized by category.
 | [HOW_TO_BUILD.md](../HOW_TO_BUILD.md) | **THE** build guide |
 | [GETTING_STARTED.md](../GETTING_STARTED.md) | Complete setup walkthrough |
 | [QUICK_START.md](../QUICK_START.md) | Quick start guide |
-| [BRANCH_PROTECTION.md](../BRANCH_PROTECTION.md) | Branch protection rules (main & dev) |
+| [BRANCH_PROTECTION.md](../BRANCH_PROTECTION.md) | Branch protection rules (main/master/team-dev) |
 
 ---
 

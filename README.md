@@ -9,7 +9,7 @@
 
 1. **Find your roles:** [FIND_YOUR_TASKS.md](FIND_YOUR_TASKS.md)
 2. **Follow your team's path:** [START_HERE.md](START_HERE.md)
-3. **Git hooks:** Automatically configured on clone (protects main and dev branches)
+3. **Git hooks:** Automatically configured on clone (protects main/master and branches containing team-dev)
 
 ### Quick Build & Run
 
@@ -244,12 +244,12 @@ deepiri/
 
 ## Contributing
 
-1. **Git hooks:** Automatically configured on clone (protects main and dev branches)
+1. **Git hooks:** Automatically configured on clone (protects main/master and branches containing team-dev)
 2. Fork the repository
-3. Create a feature branch (NOT from main or dev)
+3. Create a feature branch from `dev` (or your team integration branch)
 4. Make your changes
 5. Run `./build.sh` to test
-6. Submit a pull request to `staging` (NOT main or dev)
+6. Submit a pull request to `dev` (or `staging` if your team flow requires it)
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for complete workflow details.
 
