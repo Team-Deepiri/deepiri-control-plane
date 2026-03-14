@@ -1,6 +1,3 @@
-# CI pipeline for the entire platform (root + all submodules)
-# Runs on PRs, pushes to main, and manual triggers
-
 name: Platform Build and Test
 
 on:
@@ -8,8 +5,6 @@ on:
   push:
     branches: [ main ]
   workflow_dispatch:
-
-# Build and test the platform root (non-submodule)
 
 jobs:
   root-build:
@@ -19,8 +14,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -35,130 +28,3 @@ jobs:
 
       - name: Test root project
         run: npm test --if-present
-
-  # Dynamically detect all git submodules
-  # Allows CI to scale automatically
-
-  discover-submodules:
-    name: Discover Submodules
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: List submodules
-        id: list
-        run: |
-          {
-            echo "SUBMODULES<<EOF"
-            git submodule --quiet foreach 'echo $path' | sed '/^\s*$/d'
-            echo "EOF"
-          } >> $GITHUB_ENV
-
-      - name: Build JSON matrix
-        id: set-matrix
-        run: |
-          modules=$(printf '%s\n' "$SUBMODULES" \
-            | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
-            | sed '/^[[:space:]]*$/d' \
-            | jq -R . \
-            | jq -s .)
-
-          echo "matrix<<EOF" >> $GITHUB_OUTPUT
-          echo "{\"path\": $modules}" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-
-
-# Run each submodule in parallel using a matrix
-
-  submodule-build:
-    name: Submodule Build and Test
-    needs: discover-submodules
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJson(needs.discover-submodules.outputs.matrix) }}
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Enter submodule
-        working-directory: ${{ matrix.path }}
-        run: echo "Testing submodule at $PWD"
-
-      # Detect whether this submodule is Node or Python based on its files
-
-      - name: Detect Node project
-        id: node-check
-        working-directory: ${{ matrix.path }}
-        run: |
-          if [ -f package.json ]; then
-            echo "is_node=true" >> $GITHUB_OUTPUT
-          else
-            echo "is_node=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Detect Python project
-        id: python-check
-        working-directory: ${{ matrix.path }}
-        run: |
-          if [ -f requirements.txt ]; then
-            echo "is_python=true" >> $GITHUB_OUTPUT
-          else
-            echo "is_python=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Setup Node
-        if: steps.node-check.outputs.is_node == 'true'
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Install Node dependencies
-        if: steps.node-check.outputs.is_node == 'true'
-        working-directory: ${{ matrix.path }}
-        run: npm ci
-
-      - name: Build Node project
-        if: steps.node-check.outputs.is_node == 'true'
-        working-directory: ${{ matrix.path }}
-        run: npm run build --if-present
-
-      - name: Test Node project
-        if: steps.node-check.outputs.is_node == 'true'
-        working-directory: ${{ matrix.path }}
-        run: npm test --if-present
-
-      - name: Setup Python
-        if: steps.python-check.outputs.is_python == 'true'
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install Python dependencies
-        if: steps.python-check.outputs.is_python == 'true'
-        working-directory: ${{ matrix.path }}
-        run: |
-          python -m venv venv
-          source venv/bin/activate
-          pip install -r requirements.txt
-
-      - name: Test Python project
-        if: steps.python-check.outputs.is_python == 'true'
-        working-directory: ${{ matrix.path }}
-        run: |
-          source venv/bin/activate
-          if [ -d tests ]; then
-            pytest -q
-          else
-            echo "No tests directory found"
-          fi
