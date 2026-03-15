@@ -5,7 +5,7 @@
   "private": true,
   "workspaces": [
     "platform-services/backend/*",
-    "platform-services/shared/*",
+    "platform-services/shared/deepiri-shared-utils",
     "deepiri-core-api",
     "deepiri-web-frontend"
   ],
