@@ -5,7 +5,6 @@ import { config } from './config/environment';
 import { logger } from './utils/logger';
 import routes from './routes';
 import { validateBodyIfPresent } from './middleware/inputValidation';
-import { bodyParserConfig, requestSizeLimiter } from './middleware/requestLimits';
 
 export function createServer(): Express {
   const app = express();
@@ -17,10 +16,9 @@ export function createServer(): Express {
     credentials: true,
   }));
 
-  // Request size limits (Issue 8)
-  app.use(requestSizeLimiter);
-  app.use(express.json(bodyParserConfig.json));
-  app.use(express.urlencoded(bodyParserConfig.urlencoded));
+  // Body parsing
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
   app.use(validateBodyIfPresent());
 
   // Health check
