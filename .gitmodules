@@ -1,3 +1,6 @@
+[submodule "Deepiri/prismpipe"]
+	path = Deepiri/prismpipe
+	url = git@github.com:Deepiri/prismpipe.git
 [submodule "deepiri-core-api"]
 	path = deepiri-core-api
 	url = git@github.com:Team-Deepiri/deepiri-core-api.git
