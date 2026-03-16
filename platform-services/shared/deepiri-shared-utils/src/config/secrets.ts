@@ -1,7 +1,3 @@
-import { config } from 'dotenv';
-
-config();
-
 /** interface SecretsConfig {
   jwtSecret: string;
   databaseUrl: string;
