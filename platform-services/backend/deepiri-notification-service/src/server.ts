@@ -8,7 +8,6 @@ import dotenv from 'dotenv';
 import { secureLog } from '@deepiri/shared-utils';
 import { router, websocket } from './index';
 import { validateBodyIfPresent } from './middleware/inputValidation';
-import { bodyParserConfig, requestSizeLimiter } from './middleware/requestLimits';
 
 dotenv.config();
 
@@ -22,11 +21,7 @@ const PORT: number = parseInt(process.env.PORT || '5005', 10);
 
 app.use(helmet());
 app.use(cors());
-
-// Request size limits (Issue 8)
-app.use(requestSizeLimiter);
-app.use(express.json(bodyParserConfig.json));
-app.use(express.urlencoded(bodyParserConfig.urlencoded));
+app.use(express.json({ limit: '100kb' }));
 app.use(validateBodyIfPresent());
 
 // PostgreSQL connection via Prisma (if needed for notifications storage)

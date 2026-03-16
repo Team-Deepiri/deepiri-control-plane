@@ -1,9 +1,3 @@
-import { config } from 'dotenv';
-import crypto from 'crypto';
-import { secureLog } from '../secureLogger';
-
-config();
-
 /** interface SecretsConfig {
   jwtSecret: string;
   databaseUrl: string;

@@ -10,13 +10,13 @@ cd "$(dirname "$0")/../.." || exit 1
 export DOCKER_BUILDKIT=1
 export COMPOSE_DOCKER_CLI_BUILD=1
 
-# QA team services (language-intelligence-service excluded - service directory is empty)
 SERVICES=(
   postgres redis influxdb
   api-gateway auth-service task-orchestrator
   engagement-service platform-analytics-service
   notification-service external-bridge-service
   challenge-service realtime-gateway
+  language-intelligence-service messaging-service
   synapse frontend-dev adminer
 )
 

@@ -31,7 +31,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-deepiri}
     volumes:
       - postgres_dev_data:/var/lib/postgresql/data
-      - ./scripts/database/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./scripts/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     networks:
       - deepiri-dev-network
     healthcheck:
@@ -107,6 +107,29 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    networks:
+      - deepiri-dev-network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: deepiri-kafka-dev
+    restart: unless-stopped
+    logging: *minimal-logging
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      CLUSTER_ID: "Mvfv23irSXm93djf5t5WwA"
     networks:
       - deepiri-dev-network
 
@@ -256,6 +279,7 @@ services:
       - challenge-service
       - realtime-gateway
       - language-intelligence-service
+      - messaging-service
       - synapse
       # cyrex dependency removed - only needed by AI/ML team
       # external-bridge-service dependency removed - only needed by Backend Team
@@ -282,6 +306,11 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-deepiri}:${POSTGRES_PASSWORD:-deepiripassword}@postgres:5432/${POSTGRES_DB:-deepiri}
       SYNAPSE_URL: http://synapse:8002
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
       K8S_SERVICE_NAME: auth-service  # Filter to only load this service's configmap
     volumes:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
@@ -451,6 +480,10 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       EXTERNAL_BRIDGE_BASE_URL: ${EXTERNAL_BRIDGE_BASE_URL}
       AUTH_SERVICE_URL: ${AUTH_SERVICE_URL}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      KAFKA_BROKERS: kafka:9092
       K8S_SERVICE_NAME: external-bridge-service  # Filter to only load this service's configmap
     volumes:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
@@ -467,6 +500,7 @@ services:
     depends_on:
       - postgres
       - synapse
+      - kafka
     networks:
       - deepiri-dev-network
 
@@ -556,6 +590,52 @@ services:
     networks:
       - deepiri-dev-network
 
+  # Messaging Service
+  messaging-service:
+    build:
+      context: ./platform-services
+      dockerfile: backend/deepiri-messaging-service/Dockerfile
+    image: deepiri-dev-messaging-service:latest
+    pull_policy: never
+    container_name: deepiri-messaging-service-dev
+    restart: unless-stopped
+    logging: *minimal-logging
+    ports:
+      - "5010:5010"
+    environment:
+      PORT: 5010
+      DATABASE_URL: postgresql://${POSTGRES_USER:-deepiri}:${POSTGRES_PASSWORD:-deepiripassword}@postgres:5432/${POSTGRES_DB:-deepiri}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redispassword}
+      CYREX_URL: http://cyrex:8000
+      CYREX_API_KEY: ${CYREX_API_KEY:-change-me}
+      REALTIME_GATEWAY_URL: http://realtime-gateway:5008
+      K8S_SERVICE_NAME: messaging-service
+    volumes:
+      - ./ops/k8s/configmaps:/k8s-configmaps:ro
+      - ./ops/k8s/secrets:/k8s-secrets:ro
+      - ./platform-services/backend/deepiri-messaging-service/src:/app/src
+      - ./platform-services/backend/deepiri-messaging-service/tsconfig.json:/app/tsconfig.json
+      - shared_utils_node_modules:/shared-utils/node_modules
+      - /app/node_modules
+    command: sh -c "cd /shared-utils && if [ ! -d node_modules ] || [ -z \"$(ls -A node_modules 2>/dev/null)\" ]; then npm install --legacy-peer-deps --unsafe-perm && npm run build && chown -R nodejs:nodejs node_modules 2>/dev/null || true; fi && cd /app && rm -rf node_modules 2>/dev/null || true && npm cache clean --force && npm install --legacy-peer-deps file:/shared-utils && (if [ -f /usr/local/bin/prisma-baseline.sh ]; then /usr/local/bin/prisma-baseline.sh; else echo '[Prisma Baseline] Script not found, skipping baseline (rebuild image to enable)'; npx prisma migrate deploy || true; fi) && npx prisma generate && npm run dev"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5010/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    depends_on:
+      - postgres
+      - redis
+      - cyrex
+      - realtime-gateway
+      - auth-service
+      - synapse
+    networks:
+      - deepiri-dev-network
+
   # Realtime Gateway Service
   realtime-gateway:
     build:
@@ -606,19 +686,52 @@ services:
   #   sudo systemctl restart docker
   # ════════════════════════════════════════════════════════════════════════
   ollama:
+    # Use custom Dockerfile with build-time model pre-pull
+    # Models are downloaded during Docker build and baked into the image
+    # This eliminates 1.2-3.3s first-request penalty from model loading
+    # 
+    # To disable pre-pull and use check-ollama-models.sh script instead:
+    #   docker-compose build --build-arg PRE_PULL_MODELS=false ollama
+    # 
+    # To pre-pull specific models (space-separated):
+    #   docker-compose build --build-arg MODELS="mistral:7b llama3:8b codellama:7b" ollama
+    build:
+      context: ./docker/ollama
+      dockerfile: Dockerfile
+      args:
+        PRE_PULL_MODELS: "true"  # Set to "false" to disable build-time pre-pull
+        MODELS: "mistral:7b llama3:8b codellama:7b"  # Space-separated list of models to pre-pull
+    # Fallback to public image if build context doesn't exist
     image: ollama/ollama:latest
     container_name: deepiri-ollama-dev
     restart: unless-stopped
     logging: *minimal-logging
+    runtime: nvidia  # Enable NVIDIA GPU runtime
     ports:
       - "${OLLAMA_PORT:-11435}:11434"
     volumes:
       - ollama_dev_data:/root/.ollama
+    environment:
+      OLLAMA_HOST: 0.0.0.0
+      OLLAMA_KEEP_ALIVE: "24h"  # Increased from 30m to prevent model reloads
+      OLLAMA_NUM_PARALLEL: "4"
+      # GPU optimizations for RTX 5080 (sm_120, tensor cores)
+      CUDA_VISIBLE_DEVICES: "0"  # Use first GPU
+      NVIDIA_VISIBLE_DEVICES: "all"
+      NVIDIA_DRIVER_CAPABILITIES: "compute,utility"
+      # Ollama GPU optimizations
+      OLLAMA_NUM_GPU: "1"
+      OLLAMA_GPU_OVERHEAD: "0"  # Minimize VRAM overhead
+      OLLAMA_MAX_LOADED_MODELS: "2"  # Keep 2 models in VRAM
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     networks:
       - deepiri-dev-network
-    # GPU support - See docker-compose.dev.gpu.yml for GPU configuration
-    # To use GPU: docker compose -f docker-compose.dev.yml -f docker-compose.dev.gpu.yml up -d ollama
-    # Without GPU override, Ollama runs in CPU mode (works on all systems)
 
   # Python Agent API (AI Service)
   cyrex:

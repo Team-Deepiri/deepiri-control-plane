@@ -3,7 +3,7 @@
  * Subscribes to all event streams and forwards to WebSocket clients
  */
 import { StreamingClient, StreamTopics, StreamEvent } from '@deepiri/shared-utils';
-import { logger, secureLog } from '@deepiri/shared-utils';
+import { secureLog } from '@deepiri/shared-utils';
 import { Server } from 'socket.io';
 
 let streamingClient: StreamingClient | null = null;

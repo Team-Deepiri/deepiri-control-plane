@@ -4,10 +4,9 @@ import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
-import { logger, secureLog } from '@deepiri/shared-utils';
+import { secureLog } from '@deepiri/shared-utils';
 import { setupGamificationEvents, GamificationEventEmitter } from './gamificationEvents';
 import { validateBodyIfPresent } from './middleware/inputValidation';
-import { bodyParserConfig, requestSizeLimiter } from './middleware/requestLimits';
 
 dotenv.config();
 
@@ -21,11 +20,7 @@ const PORT: number = parseInt(process.env.PORT || '5008', 10);
 
 app.use(cors());
 app.use(helmet());
-
-// Request size limits (Issue 8)
-app.use(requestSizeLimiter);
-app.use(express.json(bodyParserConfig.json));
-app.use(express.urlencoded(bodyParserConfig.urlencoded));
+app.use(express.json({ limit: '100kb' }));
 app.use(validateBodyIfPresent());
 
 // Setup gamification events

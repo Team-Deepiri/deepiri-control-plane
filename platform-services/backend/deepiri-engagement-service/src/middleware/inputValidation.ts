@@ -13,7 +13,7 @@ const logger = winston.createLogger({
 const MAX_BODY_KEYS = 50;
 const MAX_STRING_VALUE_LENGTH = 10000;
 
-const validate = (validations: ValidationChain[]) => {
+export const validate = (validations: ValidationChain[]) => {
   return async (req: Request, res: Response, next: NextFunction) => {
     await Promise.all(validations.map((v) => v.run(req)));
     const errors = validationResult(req);
@@ -41,7 +41,7 @@ const validate = (validations: ValidationChain[]) => {
   };
 };
 
-const generateBodyValidations = () => [
+export const generateBodyValidations = () => [
   body()
     .isObject()
     .withMessage('Body must be a JSON object')
@@ -61,7 +61,7 @@ const generateBodyValidations = () => [
     }),
 ];
 
-/** Run body validation only when request has a JSON body. */
+/** Run body validation only when request has a JSON body (POST/PUT/PATCH). */
 export const validateBodyIfPresent = () => {
   const validations = generateBodyValidations();
   return async (req: Request, res: Response, next: NextFunction) => {
@@ -71,4 +71,3 @@ export const validateBodyIfPresent = () => {
     next();
   };
 };
-
