@@ -254,6 +254,18 @@ fi
 echo "    ✅ language-intelligence-service initialized at: $(pwd)/platform-services/backend/deepiri-language-intelligence-service"
 echo ""
 
+# deepiri-prismpipe
+echo "  📦 deepiri-prismpipe (PrismPipe - Capability-Routed API Pipeline - Team-Deepiri/deepiri-prismpipe)..."
+cleanup_invalid_submodule "platform-services/shared/deepiri-prismpipe"
+git submodule update --init --recursive platform-services/shared/deepiri-prismpipe 2>&1 || true
+if ! check_submodule "platform-services/shared/deepiri-prismpipe"; then
+    echo "    ❌ ERROR: deepiri-prismpipe not cloned correctly!"
+    echo "    💡 Try: git submodule update --init --recursive platform-services/shared/deepiri-prismpipe"
+    exit 1
+fi
+echo "    ✅ prismpipe initialized at: $(pwd)/platform-services/shared/deepiri-prismpipe"
+echo ""
+
 # Update to latest while preserving current branches
 echo "🔄 Updating submodules while preserving their current branches..."
 update_submodule_preserve_branch "deepiri-core-api"
@@ -265,6 +277,7 @@ update_submodule_preserve_branch "platform-services/backend/deepiri-auth-service
 update_submodule_preserve_branch "diri-helox"
 update_submodule_preserve_branch "deepiri-modelkit"
 update_submodule_preserve_branch "platform-services/backend/deepiri-language-intelligence-service"
+update_submodule_preserve_branch "platform-services/shared/deepiri-prismpipe"
 echo "    ✅ All submodules updated (branches preserved)"
 echo ""
 
@@ -280,6 +293,7 @@ git submodule status platform-services/backend/deepiri-auth-service
 git submodule status diri-helox
 git submodule status deepiri-modelkit
 git submodule status platform-services/backend/deepiri-language-intelligence-service
+git submodule status platform-services/shared/deepiri-prismpipe
 echo ""
 
 echo "✅ All submodules ready!"
@@ -294,6 +308,7 @@ echo "  ✅ deepiri-auth-service"
 echo "  ✅ diri-helox"
 echo "  ✅ deepiri-modelkit"
 echo "  ✅ deepiri-language-intelligence-service"
+echo "  ✅ deepiri-prismpipe (PrismPipe)"
 echo ""
 echo "📋 Quick Commands:"
 echo "  - Check status: git submodule status"
@@ -307,5 +322,6 @@ echo "  - Work in Auth Service: cd platform-services/backend/deepiri-auth-servic
 echo "  - Work in Helox: cd diri-helox"
 echo "  - Work in Model Kit: cd deepiri-modelkit"
 echo "  - Work in Language Intelligence: cd platform-services/backend/deepiri-language-intelligence-service"
+echo "  - Work in PrismPipe: cd platform-services/shared/deepiri-prismpipe"
 echo ""
 
