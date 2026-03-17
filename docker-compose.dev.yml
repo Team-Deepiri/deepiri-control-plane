@@ -891,6 +891,78 @@ services:
     networks:
       - deepiri-dev-network
 
+  # Persola - Personalized Agentic Framework
+  persola:
+    build:
+      context: ./diri-persola
+      dockerfile: docker/Dockerfile
+    image: deepiri-dev-persola:latest
+    pull_policy: never
+    container_name: deepiri-persola-dev
+    restart: unless-stopped
+    logging: *minimal-logging
+    environment:
+      # Server
+      HOST: 0.0.0.0
+      PORT: 8002
+      DEBUG: "true"
+      CORS_ORIGIN: "*"
+      # Database (uses existing cyrex postgres)
+      POSTGRES_HOST: postgres-cyrex
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: cyrex_db
+      POSTGRES_USER: deepiri_cyrex
+      POSTGRES_PASSWORD: ${POSTGRES_CYREX_PASSWORD:-deepiripassword}
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redispassword}
+      # Model Providers
+      OLLAMA_BASE_URL: http://ollama:11434
+      DEFAULT_MODEL: llama3:8b
+      DEFAULT_PROVIDER: ollama
+      # External APIs
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      # Cyrex Integration
+      CYREX_URL: http://cyrex:8000
+      CYREX_API_KEY: ${CYREX_API_KEY:-change-me}
+    ports:
+      - "8010:8002"
+    volumes:
+      - ./diri-persola:/app
+    command: uvicorn persola.api.main:app --host 0.0.0.0 --port 8002 --reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    depends_on:
+      - postgres-cyrex
+      - redis
+      - ollama
+      - cyrex
+    networks:
+      - deepiri-dev-network
+
+  # Persola UI - React Frontend
+  persola-ui:
+    build:
+      context: ./diri-persola/ui
+      dockerfile: Dockerfile
+    image: deepiri-dev-persola-ui:latest
+    pull_policy: never
+    container_name: deepiri-persola-ui-dev
+    restart: unless-stopped
+    logging: *minimal-logging
+    ports:
+      - "3000:3000"
+    depends_on:
+      - persola
+    networks:
+      - deepiri-dev-network
+
   # Cyrex-AGI - Commented out for now
   # cyrex-agi:
   #   build:
@@ -1080,6 +1152,23 @@ services:
     depends_on:
       - synapse
       # api-gateway dependency removed - frontend can work without it
+    networks:
+      - deepiri-dev-network
+
+  # PrismPipe - Capability-Routed API Pipeline
+  deepiri-prismpipe:
+    build:
+      context: ./platform-services/shared/deepiri-prismpipe
+      dockerfile: Dockerfile
+    image: deepiri-dev-prismpipe:latest
+    pull_policy: never
+    container_name: deepiri-prismpipe-dev
+    restart: unless-stopped
+    logging: *minimal-logging
+    ports:
+      - "5011:5011"
+    environment:
+      PORT: 5011
     networks:
       - deepiri-dev-network
 
