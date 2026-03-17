@@ -40,7 +40,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
   const startedAt = Date.now();
 
-  logger.info('Incoming request', {
+  secureLog('info', 'Incoming request', {
     requestId,
     method: req.method,
     path: req.path,
@@ -48,7 +48,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   });
 
   res.on('finish', () => {
-    logger.info('Request completed', {
+    secureLog('info', 'Request completed', {
       requestId,
       method: req.method,
       path: req.path,
@@ -155,7 +155,7 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
     (res.locals.requestId as string | undefined) ||
     (typeof req.headers['x-request-id'] === 'string' ? req.headers['x-request-id'] : 'unknown');
 
-  logger.error('Unhandled server error', {
+  secureLog('error', 'Unhandled server error', {
     requestId,
     method: req.method,
     path: req.path,
