@@ -1682,14 +1682,69 @@ async def main():
                                     line = line.strip()
                                     if line and "HEAD" not in line and not line.startswith("origin/HEAD"):
                                         remote_branches.append(line)
-                                for i, b in enumerate(remote_branches[:20]):
-                                    print(f"  {i + 1}) {b}")
-                                if len(remote_branches) > 20:
-                                    print(f"  ... and {len(remote_branches) - 20} more")
-                                print(f"\n{Colors.CYAN}Enter branch number or name to checkout (or 'n' to skip): {Colors.NC}", end="")
-                                branch_choice = input().strip()
+                                
+                                page_size = 20
+                                offset = 0
+                                while True:
+                                    display_branches = remote_branches[offset:offset + page_size]
+                                    for i, b in enumerate(display_branches):
+                                        print(f"  {offset + i + 1}) {b}")
+                                    
+                                    remaining = len(remote_branches) - offset - page_size
+                                    if remaining > 0:
+                                        print(f"  ... and {remaining} more")
+                                    
+                                    print(f"\n{Colors.CYAN}Enter branch number, name, 'more' for more, 'new' to create, or 'n' to skip: {Colors.NC}", end="")
+                                    branch_choice = input().strip()
+                                    
+                                    if branch_choice.lower() == "more":
+                                        offset += page_size
+                                        if offset >= len(remote_branches):
+                                            offset = 0
+                                        continue
+                                    break
+                                
                                 if branch_choice.lower() == "n" or not branch_choice:
                                     print(f"{Colors.YELLOW}Skipping PR creation.{Colors.NC}")
+                                elif branch_choice.lower() == "new":
+                                    print(f"{Colors.CYAN}Enter new branch name: {Colors.NC}", end="")
+                                    new_branch = input().strip()
+                                    if new_branch:
+                                        print(f"\n{Colors.CYAN}Creating and pushing new branch {new_branch}...{Colors.NC}")
+                                        checkout_result = subprocess.run(
+                                            ["git", "checkout", "-b", new_branch],
+                                            cwd=repo_path,
+                                            capture_output=True,
+                                            text=True,
+                                        )
+                                        if checkout_result.returncode == 0:
+                                            push_result = subprocess.run(
+                                                ["git", "push", "-u", "origin", new_branch],
+                                                cwd=repo_path,
+                                                capture_output=True,
+                                                text=True,
+                                            )
+                                            if push_result.returncode == 0:
+                                                result = subprocess.run(
+                                                    ["gh", "pr", "create",
+                                                     "--title", pr_title,
+                                                     "--body", pr_desc,
+                                                     "--base", base_branch,
+                                                     "--head", new_branch],
+                                                    cwd=repo_path,
+                                                    capture_output=True,
+                                                    text=True,
+                                                )
+                                                if result.returncode == 0:
+                                                    print(f"  {Colors.GREEN}✓ PR created: {result.stdout.strip()}{Colors.NC}")
+                                                else:
+                                                    print(f"  {Colors.RED}✗ PR failed: {result.stderr.strip()}{Colors.NC}")
+                                            else:
+                                                print(f"  {Colors.RED}✗ Push failed: {push_result.stderr.strip()}{Colors.NC}")
+                                        else:
+                                            print(f"{Colors.RED}✗ Checkout failed: {checkout_result.stderr.strip()}{Colors.NC}")
+                                    else:
+                                        print(f"{Colors.YELLOW}No branch name entered.{Colors.NC}")
                                 else:
                                     target_branch = None
                                     if branch_choice.isdigit():
