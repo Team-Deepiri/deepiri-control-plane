@@ -469,7 +469,7 @@ def get_local_branches(repo_path: str) -> list[str]:
         branches = []
         for line in result.stdout.strip().split("\n"):
             branch = line.strip().lstrip("* ").strip()
-            if branch:
+            if branch and not branch.startswith("(") and not branch.startswith("HEAD"):
                 branches.append(branch)
         return branches
     except Exception:
@@ -663,6 +663,7 @@ async def main():
             sys.exit(0)
     else:
         print(f"\n{Colors.CYAN}Actions:{Colors.NC}")
+        print(f"  {Colors.BLUE}l{Colors.NC}) List all branches")
         print(f"  {Colors.GREEN}c{Colors.NC}) Switch/checkout branch")
         print(f"  {Colors.GREEN}f{Colors.NC}) Fetch all remotes")
         print(f"  {Colors.GREEN}m{Colors.NC}) Merge branch into current")
@@ -672,10 +673,37 @@ async def main():
         if in_merge or in_rebase:
             print(f"  {Colors.RED}!{Colors.NC}) Abort merge/rebase")
         
-        print(f"\n{Colors.CYAN}Select action [c/m/rb]: {Colors.NC}", end="")
+        print(f"\n{Colors.CYAN}Select action [l/c/m/rb]: {Colors.NC}", end="")
         action = input().strip().lower()
         
         if action == "q":
+            sys.exit(0)
+        elif action == "l":
+            print(f"\n{Colors.CYAN}All branches:{Colors.NC}")
+            local = get_local_branches(repo_path)
+            remote = get_remote_branches(repo_path)
+            
+            print(f"\n{Colors.GREEN}Local branches:{Colors.NC}")
+            if current_branch:
+                for i, b in enumerate(local):
+                    marker = " *" if b == current_branch else ""
+                    print(f"  {i + 1}) {b}{marker}")
+            else:
+                detached_commit = subprocess.run(
+                    ["git", "rev-parse", "--short", "HEAD"],
+                    cwd=repo_path,
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip() or "unknown"
+                print(f"  {Colors.YELLOW}⚠ HEAD detached at {detached_commit}{Colors.NC}")
+                for i, b in enumerate(local):
+                    print(f"  {i + 1}) {b}")
+            
+            if remote:
+                print(f"\n{Colors.CYAN}Remote branches:{Colors.NC}")
+                for i, b in enumerate(remote, start=len(local) + 1):
+                    print(f"  {i}) {b}")
+            print("")
             sys.exit(0)
         elif action == "f":
             print(f"\n{Colors.CYAN}Fetching all remotes...{Colors.NC}")
@@ -690,9 +718,20 @@ async def main():
             remote = get_remote_branches(repo_path)
             
             print(f"\n{Colors.GREEN}Local branches:{Colors.NC}")
-            for i, b in enumerate(local):
-                marker = " *" if b == current_branch else ""
-                print(f"  {i + 1}) {b}{marker}")
+            if current_branch:
+                for i, b in enumerate(local):
+                    marker = " *" if b == current_branch else ""
+                    print(f"  {i + 1}) {b}{marker}")
+            else:
+                detached_commit = subprocess.run(
+                    ["git", "rev-parse", "--short", "HEAD"],
+                    cwd=repo_path,
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip() or "unknown"
+                print(f"  {Colors.YELLOW}⚠ HEAD detached at {detached_commit}{Colors.NC}")
+                for i, b in enumerate(local):
+                    print(f"  {i + 1}) {b}")
             
             if remote:
                 print(f"\n{Colors.CYAN}Remote branches:{Colors.NC}")
@@ -778,7 +817,9 @@ async def main():
                 print(f"{Colors.GREEN}✓ No conflicts! Merge complete.{Colors.NC}")
                 if has_changes:
                     subprocess.run(["git", "stash", "pop"], cwd=repo_path, capture_output=True)
-                sys.exit(0)
+            else:
+                print(f"{Colors.YELLOW}Merge initiated with conflicts. Run ai-conflict.py again to resolve.{Colors.NC}")
+            sys.exit(0)
         elif action == "rb":
             print(f"\n{Colors.CYAN}Rebase onto which branch? (or 'fetch' first): {Colors.NC}", end="")
             branch_to_rebase = input().strip()
@@ -815,7 +856,9 @@ async def main():
                 print(f"{Colors.GREEN}✓ No conflicts! Rebase complete.{Colors.NC}")
                 if has_changes:
                     subprocess.run(["git", "stash", "pop"], cwd=repo_path, capture_output=True)
-                sys.exit(0)
+            else:
+                print(f"{Colors.YELLOW}Rebase initiated with conflicts. Run ai-conflict.py again to resolve.{Colors.NC}")
+            sys.exit(0)
         elif action == "!":
             if abort_rebase_or_merge(repo_path):
                 print(f"{Colors.GREEN}✓ Aborted{Colors.NC}")
@@ -934,3 +977,7 @@ async def main():
             print(f"{Colors.CYAN}Run 'git commit' to complete merge or 'git rebase --continue' for rebase.{Colors.NC}")
     
     print(f"\n{Colors.CYAN}To abort and revert: git merge --abort  or  git rebase --abort{Colors.NC}")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
