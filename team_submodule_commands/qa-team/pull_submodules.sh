@@ -22,6 +22,7 @@ declare -a SUBMODULES=(
   "platform-services/backend/deepiri-language-intelligence-service"
   "deepiri-core-api"
   "deepiri-web-frontend"
+  "platform-services/shared/deepiri-prismpipe"
 )
 
 # Initialize and update only those submodules
