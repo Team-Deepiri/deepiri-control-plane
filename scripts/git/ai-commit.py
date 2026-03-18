@@ -19,6 +19,108 @@ except ImportError:
     sys.exit(1)
 
 
+def get_os_type() -> str:
+    if sys.platform == "darwin":
+        return "mac"
+    if sys.platform == "win32" or "microsoft" in os.uname().release.lower():
+        return "windows"
+    return "linux"
+
+
+def is_ollama_running(base_url: str) -> bool:
+    try:
+        import urllib.request
+        req = urllib.request.Request(f"{base_url}/api/tags")
+        urllib.request.urlopen(req, timeout=2)
+        return True
+    except Exception:
+        return False
+
+
+def start_ollama(root_path: str, base_url: str) -> bool:
+    os_type = get_os_type()
+    
+    if is_ollama_running(base_url):
+        return True
+    
+    if os_type == "mac":
+        print(f"{Colors.YELLOW}Ollama not running. Starting with 'ollama serve'...{Colors.NC}")
+        try:
+            subprocess.Popen(["ollama", "serve"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            import time
+            for _ in range(15):
+                time.sleep(1)
+                if is_ollama_running(base_url):
+                    print(f"{Colors.GREEN}✓ Ollama started{Colors.NC}")
+                    return True
+            print(f"{Colors.RED}✗ Failed to start Ollama{Colors.NC}")
+            return False
+        except Exception as e:
+            print(f"{Colors.RED}✗ Failed to start Ollama: {e}{Colors.NC}")
+            return False
+    else:
+        compose_file = os.path.join(root_path, "docker-compose.dev.yml")
+        if not os.path.isfile(compose_file):
+            compose_file = os.path.join(root_path, "docker-compose.yml")
+        
+        print(f"{Colors.YELLOW}Ollama not running. Starting with docker compose...{Colors.NC}")
+        try:
+            result = subprocess.run(
+                ["docker", "compose", "-f", compose_file, "up", "-d", "ollama"],
+                cwd=root_path,
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                print(f"{Colors.RED}✗ Docker compose failed: {result.stderr}{Colors.NC}")
+                return False
+            
+            import time
+            for _ in range(30):
+                time.sleep(1)
+                if is_ollama_running(base_url):
+                    print(f"{Colors.GREEN}✓ Ollama started (docker){Colors.NC}")
+                    return True
+            print(f"{Colors.YELLOW}⚠ Ollama container may still be starting...{Colors.NC}")
+            return True
+        except Exception as e:
+            print(f"{Colors.RED}✗ Failed to start Ollama: {e}{Colors.NC}")
+            return False
+
+
+def find_check_ollama_script(root_path: str) -> str | None:
+    env_override = os.getenv("OLLAMA_SCRIPTS_ROOT")
+    if env_override:
+        script_path = os.path.join(env_override, "check-ollama-models.sh")
+        if os.path.isfile(script_path):
+            return script_path
+
+    search_paths = [
+        os.path.join(root_path, "diri-cyrex", "scripts", "llm", "check-ollama-models.sh"),
+        os.path.join(root_path, "scripts", "llm", "check-ollama-models.sh"),
+        os.path.join(os.path.dirname(__file__), "..", "llm", "check-ollama-models.sh"),
+        os.path.join(os.path.dirname(__file__), "..", "scripts", "llm", "check-ollama-models.sh"),
+    ]
+
+    for path in search_paths:
+        if os.path.isfile(path):
+            return path
+
+    current = root_path
+    for _ in range(5):
+        parent = os.path.dirname(current)
+        if parent == current:
+            break
+        for sibling in ["elomix-nexus", "elomix-platform", "deepiri"]:
+            for subpath in ["scripts/llm", "llm/scripts", "diri-cyrex/scripts/llm"]:
+                script_path = os.path.join(parent, sibling, subpath, "check-ollama-models.sh")
+                if os.path.isfile(script_path):
+                    return script_path
+        current = parent
+
+    return None
+
+
 class Colors:
     GREEN = "\033[0;32m"
     RED = "\033[0;31m"
@@ -988,6 +1090,25 @@ async def main():
     if not selected_repos:
         print(f"{Colors.RED}No repositories selected.{Colors.NC}")
         sys.exit(1)
+
+    if not is_ollama_running(ollama_url):
+        print(f"\n{Colors.YELLOW}Ollama is not running.{Colors.NC}")
+        print(f"{Colors.CYAN}[s] Start automatically  [m] Pull models  [q] Quit: {Colors.NC}", end="")
+        response = input().strip().lower()
+        if response == "s":
+            if not start_ollama(root_path, ollama_url):
+                print(f"{Colors.RED}Could not start Ollama. Please start it manually.{Colors.NC}")
+                sys.exit(1)
+        elif response == "m":
+            check_script = find_check_ollama_script(root_path)
+            if check_script:
+                print(f"\n{Colors.CYAN}Running check-ollama-models.sh...{Colors.NC}")
+                subprocess.run([check_script], cwd=root_path)
+            else:
+                print(f"{Colors.YELLOW}check-ollama-models.sh not found. Please install models manually.{Colors.NC}")
+            sys.exit(0)
+        elif response != "":
+            sys.exit(0)
 
     async with Spinner(f"Connecting to Ollama at {ollama_url}..."):
         models = await get_ollama_models(ollama_url)
