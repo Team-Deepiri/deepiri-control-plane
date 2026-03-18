@@ -133,36 +133,48 @@ class Colors:
 
 
 class Spinner:
-    FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+    FRAMES = ["|", "/", "-", "\\"]
+    THINKING = [
+        "Thinking",
+        "Thinking.",
+        "Thinking..",
+        "Thinking...",
+    ]
 
     def __init__(self, text: str = ""):
         self.text = text
         self._task: asyncio.Task | None = None
         self._running = False
         self._col_width = 0
+        self._start_time = None
 
     async def _spin(self):
+        import time
+        self._start_time = time.time()
         i = 0
         while self._running:
             frame = self.FRAMES[i % len(self.FRAMES)]
-            line = f"  {Colors.CYAN}{frame}{Colors.NC} {self.text}"
-            pad = max(0, self._col_width - len(self.text))
+            elapsed = int(time.time() - self._start_time)
+            time_str = f" [{elapsed}s]"
+            line = f"  {Colors.CYAN}{frame}{Colors.NC} {self.text}{time_str}"
+            pad = max(0, self._col_width - len(self.text) - 10)
             sys.stdout.write(f"\r{line}{' ' * pad}")
             sys.stdout.flush()
-            self._col_width = max(self._col_width, len(self.text))
-            await asyncio.sleep(0.08)
+            self._col_width = max(self._col_width, len(self.text) + 10)
+            await asyncio.sleep(0.15)
             i += 1
 
     async def __aenter__(self):
         self._running = True
         self._task = asyncio.create_task(self._spin())
+        print(f"  > {self.text}", flush=True)
         return self
 
     async def __aexit__(self, *_):
         self._running = False
         if self._task:
             await self._task
-        sys.stdout.write(f"\r{' ' * (self._col_width + 10)}\r")
+        sys.stdout.write(f"\r{' ' * (self._col_width + 20)}\r")
         sys.stdout.flush()
 
     def update(self, text: str):
@@ -1620,7 +1632,7 @@ async def main():
 
         print(f"\n{Colors.BLUE}Generate PR description? [y/N]: {Colors.NC}", end="")
         if input().strip().lower() == "y":
-            print(f"\n{Colors.CYAN}Using AI to generate PR description...{Colors.NC}")
+            print(f"")
             
             repos_commits = {}
             for repo_info in all_commits_made:
@@ -1635,7 +1647,8 @@ async def main():
                 base_branch = get_default_branch(repo_path)
                 prior_commits = get_prior_commits(repo_path, base_branch, len(commits))
                 
-                pr_title, pr_desc = await generate_pr_description_ai(ollama_url, model, commits, prior_commits)
+                async with Spinner(f"Generating PR description for {repo_name}..."):
+                    pr_title, pr_desc = await generate_pr_description_ai(ollama_url, model, commits, prior_commits)
                 
                 print(f"\n{Colors.CYAN}{'─'*60}{Colors.NC}")
                 print(f"{Colors.BOLD}PR — {repo_name}{Colors.NC}")
@@ -1644,11 +1657,15 @@ async def main():
                 print(pr_desc)
                 print(f"\n{Colors.CYAN}{'─'*60}{Colors.NC}")
                 
+                current_branch = get_current_branch(repo_path)
+                if current_branch == base_branch:
+                    print(f"\n{Colors.YELLOW}WARNING: You are currently on the '{base_branch}' branch.{Colors.NC}")
+                    print(f"{Colors.YELLOW}You must switch to a feature branch before creating a PR.{Colors.NC}")
+                
                 print(f"\n{Colors.BLUE}Create PR on GitHub? [y/N]: {Colors.NC}", end="")
                 if input().strip().lower() == "y":
                     gh_ready = await ensure_gh_ready()
                     if gh_ready:
-                        current_branch = get_current_branch(repo_path)
                         if current_branch and current_branch != base_branch:
                             try:
                                 result = subprocess.run(
@@ -1710,7 +1727,7 @@ async def main():
                                     print(f"{Colors.CYAN}Enter new branch name: {Colors.NC}", end="")
                                     new_branch = input().strip()
                                     if new_branch:
-                                        print(f"\n{Colors.CYAN}Creating and pushing new branch {new_branch}...{Colors.NC}")
+                                        print(f"\n{Colors.CYAN}Creating new branch {new_branch} from current HEAD...{Colors.NC}")
                                         checkout_result = subprocess.run(
                                             ["git", "checkout", "-b", new_branch],
                                             cwd=repo_path,
@@ -1718,6 +1735,8 @@ async def main():
                                             text=True,
                                         )
                                         if checkout_result.returncode == 0:
+                                            print(f"{Colors.GREEN}✓ Created branch {new_branch}{Colors.NC}")
+                                            print(f"{Colors.CYAN}Pushing to remote...{Colors.NC}")
                                             push_result = subprocess.run(
                                                 ["git", "push", "-u", "origin", new_branch],
                                                 cwd=repo_path,
@@ -1725,6 +1744,8 @@ async def main():
                                                 text=True,
                                             )
                                             if push_result.returncode == 0:
+                                                print(f"{Colors.GREEN}✓ Pushed{Colors.NC}")
+                                                print(f"{Colors.CYAN}Creating PR...{Colors.NC}")
                                                 result = subprocess.run(
                                                     ["gh", "pr", "create",
                                                      "--title", pr_title,
@@ -1751,23 +1772,23 @@ async def main():
                                         idx = int(branch_choice) - 1
                                         if 0 <= idx < len(remote_branches):
                                             target_branch = remote_branches[idx]
-                                    else:
+                                    elif not branch_choice.lower() in ("n", "new", "more"):
                                         for rb in remote_branches:
                                             if rb.endswith(branch_choice) or rb == f"origin/{branch_choice}":
                                                 target_branch = rb
                                                 break
                                     if target_branch:
                                         local_name = target_branch.replace("origin/", "")
-                                        print(f"\n{Colors.CYAN}Switching to {local_name}...{Colors.NC}")
+                                        print(f"\n{Colors.CYAN}Creating local branch {local_name} from current HEAD (with commits)...{Colors.NC}")
                                         checkout_result = subprocess.run(
-                                            ["git", "checkout", "-b", local_name, target_branch],
+                                            ["git", "checkout", "-b", local_name],
                                             cwd=repo_path,
                                             capture_output=True,
                                             text=True,
                                         )
                                         if checkout_result.returncode == 0:
-                                            print(f"{Colors.GREEN}✓ Switched to {local_name}{Colors.NC}")
-                                            print(f"\n{Colors.CYAN}Pushing and creating PR...{Colors.NC}")
+                                            print(f"{Colors.GREEN}✓ Created branch {local_name}{Colors.NC}")
+                                            print(f"{Colors.CYAN}Pushing to remote...{Colors.NC}")
                                             push_result = subprocess.run(
                                                 ["git", "push", "-u", "origin", local_name],
                                                 cwd=repo_path,
@@ -1775,6 +1796,8 @@ async def main():
                                                 text=True,
                                             )
                                             if push_result.returncode == 0:
+                                                print(f"{Colors.GREEN}✓ Pushed{Colors.NC}")
+                                                print(f"{Colors.CYAN}Creating PR...{Colors.NC}")
                                                 result = subprocess.run(
                                                     ["gh", "pr", "create",
                                                      "--title", pr_title,

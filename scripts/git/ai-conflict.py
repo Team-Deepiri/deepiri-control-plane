@@ -132,36 +132,42 @@ class Colors:
 
 
 class Spinner:
-    FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+    FRAMES = ["|", "/", "-", "\\"]
 
     def __init__(self, text: str = ""):
         self.text = text
         self._task: asyncio.Task | None = None
         self._running = False
         self._col_width = 0
+        self._start_time = None
 
     async def _spin(self):
+        import time
+        self._start_time = time.time()
         i = 0
         while self._running:
             frame = self.FRAMES[i % len(self.FRAMES)]
-            line = f"  {Colors.CYAN}{frame}{Colors.NC} {self.text}"
-            pad = max(0, self._col_width - len(self.text))
+            elapsed = int(time.time() - self._start_time)
+            time_str = f" [{elapsed}s]"
+            line = f"  {Colors.CYAN}{frame}{Colors.NC} {self.text}{time_str}"
+            pad = max(0, self._col_width - len(self.text) - 10)
             sys.stdout.write(f"\r{line}{' ' * pad}")
             sys.stdout.flush()
-            self._col_width = max(self._col_width, len(self.text))
-            await asyncio.sleep(0.08)
+            self._col_width = max(self._col_width, len(self.text) + 10)
+            await asyncio.sleep(0.15)
             i += 1
 
     async def __aenter__(self):
         self._running = True
         self._task = asyncio.create_task(self._spin())
+        print(f"  > {self.text}", flush=True)
         return self
 
     async def __aexit__(self, *_):
         self._running = False
         if self._task:
             await self._task
-        sys.stdout.write(f"\r{' ' * (self._col_width + 10)}\r")
+        sys.stdout.write(f"\r{' ' * (self._col_width + 20)}\r")
         sys.stdout.flush()
 
     def update(self, text: str):
