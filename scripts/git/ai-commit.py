@@ -413,6 +413,8 @@ def get_dirty_submodules(repo_path: str, submodule_paths: list[str]) -> list[dic
         full_path = os.path.join(repo_path, subpath)
         if not os.path.isdir(full_path):
             continue
+        if not os.path.isdir(os.path.join(full_path, ".git")) and not os.path.isfile(os.path.join(full_path, ".git")):
+            continue
         try:
             result = subprocess.run(
                 ["git", "status", "--porcelain"],
@@ -424,12 +426,13 @@ def get_dirty_submodules(repo_path: str, submodule_paths: list[str]) -> list[dic
                 lines = result.stdout.strip().splitlines()
                 modified = sum(1 for l in lines if not l.startswith("??"))
                 untracked = sum(1 for l in lines if l.startswith("??"))
-                dirty.append({
-                    "path": subpath,
-                    "full_path": full_path,
-                    "modified": modified,
-                    "untracked": untracked,
-                })
+                if modified > 0 or untracked > 0:
+                    dirty.append({
+                        "path": subpath,
+                        "full_path": full_path,
+                        "modified": modified,
+                        "untracked": untracked,
+                    })
         except Exception:
             pass
     return dirty
@@ -1665,7 +1668,80 @@ async def main():
                             except FileNotFoundError:
                                 print(f"{Colors.RED}gh not found{Colors.NC}")
                         else:
-                            print(f"{Colors.YELLOW}On {base_branch} — PRs must be from a feature branch.{Colors.NC}")
+                            print(f"{Colors.YELLOW}Currently on {base_branch} — need to switch to a feature branch.{Colors.NC}")
+                            print(f"\n{Colors.CYAN}Available remote branches:{Colors.NC}")
+                            try:
+                                result = subprocess.run(
+                                    ["git", "branch", "-r"],
+                                    cwd=repo_path,
+                                    capture_output=True,
+                                    text=True,
+                                )
+                                remote_branches = []
+                                for line in result.stdout.strip().split("\n"):
+                                    line = line.strip()
+                                    if line and "HEAD" not in line and not line.startswith("origin/HEAD"):
+                                        remote_branches.append(line)
+                                for i, b in enumerate(remote_branches[:20]):
+                                    print(f"  {i + 1}) {b}")
+                                if len(remote_branches) > 20:
+                                    print(f"  ... and {len(remote_branches) - 20} more")
+                                print(f"\n{Colors.CYAN}Enter branch number or name to checkout (or 'n' to skip): {Colors.NC}", end="")
+                                branch_choice = input().strip()
+                                if branch_choice.lower() == "n" or not branch_choice:
+                                    print(f"{Colors.YELLOW}Skipping PR creation.{Colors.NC}")
+                                else:
+                                    target_branch = None
+                                    if branch_choice.isdigit():
+                                        idx = int(branch_choice) - 1
+                                        if 0 <= idx < len(remote_branches):
+                                            target_branch = remote_branches[idx]
+                                    else:
+                                        for rb in remote_branches:
+                                            if rb.endswith(branch_choice) or rb == f"origin/{branch_choice}":
+                                                target_branch = rb
+                                                break
+                                    if target_branch:
+                                        local_name = target_branch.replace("origin/", "")
+                                        print(f"\n{Colors.CYAN}Switching to {local_name}...{Colors.NC}")
+                                        checkout_result = subprocess.run(
+                                            ["git", "checkout", "-b", local_name, target_branch],
+                                            cwd=repo_path,
+                                            capture_output=True,
+                                            text=True,
+                                        )
+                                        if checkout_result.returncode == 0:
+                                            print(f"{Colors.GREEN}✓ Switched to {local_name}{Colors.NC}")
+                                            print(f"\n{Colors.CYAN}Pushing and creating PR...{Colors.NC}")
+                                            push_result = subprocess.run(
+                                                ["git", "push", "-u", "origin", local_name],
+                                                cwd=repo_path,
+                                                capture_output=True,
+                                                text=True,
+                                            )
+                                            if push_result.returncode == 0:
+                                                result = subprocess.run(
+                                                    ["gh", "pr", "create",
+                                                     "--title", pr_title,
+                                                     "--body", pr_desc,
+                                                     "--base", base_branch,
+                                                     "--head", local_name],
+                                                    cwd=repo_path,
+                                                    capture_output=True,
+                                                    text=True,
+                                                )
+                                                if result.returncode == 0:
+                                                    print(f"  {Colors.GREEN}✓ PR created: {result.stdout.strip()}{Colors.NC}")
+                                                else:
+                                                    print(f"  {Colors.RED}✗ PR failed: {result.stderr.strip()}{Colors.NC}")
+                                            else:
+                                                print(f"  {Colors.RED}✗ Push failed: {push_result.stderr.strip()}{Colors.NC}")
+                                        else:
+                                            print(f"{Colors.RED}✗ Checkout failed: {checkout_result.stderr.strip()}{Colors.NC}")
+                                    else:
+                                        print(f"{Colors.RED}Invalid branch selection.{Colors.NC}")
+                            except Exception as e:
+                                print(f"{Colors.RED}Error listing branches: {e}{Colors.NC}")
                     else:
                         print(f"{Colors.YELLOW}Skipping PR creation.{Colors.NC}")
                 else:
