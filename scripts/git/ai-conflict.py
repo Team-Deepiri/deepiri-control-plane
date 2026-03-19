@@ -611,290 +611,275 @@ def confirm_resolution(file_path: str, resolved_content: str) -> bool:
     return False
 
 
-async def main():
-    auto_resolve = "-y" in sys.argv or "--yes" in sys.argv
-    ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-    root_path = find_script_git_root()
-
-    print(f"{Colors.CYAN}╔{'═'*56}╗{Colors.NC}")
-    print(f"{Colors.CYAN}║{' AI Conflict Resolver (Deepiri) ':^56}║{Colors.NC}")
-    print(f"{Colors.CYAN}╚{'═'*56}╝{Colors.NC}\n")
-
-    repos = find_git_repos(root_path)
-    
-    if not repos:
-        print(f"{Colors.RED}No git repositories found.{Colors.NC}")
-        sys.exit(1)
-
-    print(f"{Colors.CYAN}Select repository:{Colors.NC}")
-    for i, repo in enumerate(repos):
-        print(f"  {i + 1}) {repo['name']}")
-    print(f"\n{Colors.CYAN}[1-{len(repos)}]: {Colors.NC}", end="")
-    
-    try:
-        selection = int(input().strip()) - 1
-        if selection < 0 or selection >= len(repos):
-            print(f"{Colors.RED}Invalid selection.{Colors.NC}")
-            sys.exit(1)
-    except ValueError:
-        print(f"{Colors.RED}Invalid input.{Colors.NC}")
-        sys.exit(1)
-    
-    repo = repos[selection]
+async def run_interactive(repo: dict, root_path: str, ollama_url: str):
     repo_path = repo["path"]
     repo_name = repo["name"]
 
-    current_branch = get_current_branch(repo_path)
-    has_changes = has_uncommitted_changes(repo_path)
-    conflict_files = get_conflict_files(repo_path)
-    in_merge = os.path.isfile(os.path.join(repo_path, ".git", "MERGE_HEAD"))
-    in_rebase = os.path.isdir(os.path.join(repo_path, ".git", "rebase-merge"))
+    while True:
+        current_branch = get_current_branch(repo_path)
+        has_changes = has_uncommitted_changes(repo_path)
+        conflict_files = get_conflict_files(repo_path)
+        in_merge = os.path.isfile(os.path.join(repo_path, ".git", "MERGE_HEAD"))
+        in_rebase = os.path.isdir(os.path.join(repo_path, ".git", "rebase-merge"))
 
-    print(f"\n{Colors.CYAN}Repository: {repo_name}{Colors.NC}")
-    print(f"  {Colors.BLUE}Branch:{Colors.NC} {current_branch or '(detached)'}")
-    if has_changes:
-        print(f"  {Colors.YELLOW}⚠ Uncommitted changes{Colors.NC}")
-    if in_merge:
-        print(f"  {Colors.YELLOW}⚠ Merge in progress{Colors.NC}")
-    if in_rebase:
-        print(f"  {Colors.YELLOW}⚠ Rebase in progress{Colors.NC}")
-    if conflict_files:
-        print(f"  {Colors.RED}⚠ {len(conflict_files)} conflict(s){Colors.NC}")
+        print(f"\n{Colors.CYAN}Repository: {repo_name}{Colors.NC}")
+        print(f"  {Colors.BLUE}Branch:{Colors.NC} {current_branch or '(detached)'}")
+        if has_changes:
+            print(f"  {Colors.YELLOW}! Uncommitted changes{Colors.NC}")
+        if in_merge:
+            print(f"  {Colors.YELLOW}! Merge in progress{Colors.NC}")
+        if in_rebase:
+            print(f"  {Colors.YELLOW}! Rebase in progress{Colors.NC}")
+        if conflict_files:
+            print(f"  {Colors.RED}! {len(conflict_files)} conflict(s){Colors.NC}")
 
-    if conflict_files:
-        print(f"\n{Colors.RED}Conflicts already detected!{Colors.NC}")
-        print(f"{Colors.CYAN}[r] Resolve conflicts  [q] Quit: {Colors.NC}", end="")
-        action = input().strip().lower()
-        if action != "r":
-            sys.exit(0)
-    else:
-        print(f"\n{Colors.CYAN}Actions:{Colors.NC}")
-        print(f"  {Colors.BLUE}l{Colors.NC}) List all branches")
-        print(f"  {Colors.GREEN}c{Colors.NC}) Switch/checkout branch")
-        print(f"  {Colors.GREEN}f{Colors.NC}) Fetch all remotes")
-        print(f"  {Colors.GREEN}m{Colors.NC}) Merge branch into current")
-        print(f"  {Colors.GREEN}rb{Colors.NC}) Rebase onto branch")
-        print(f"  {Colors.YELLOW}q{Colors.NC}) Quit")
-        
-        if in_merge or in_rebase:
-            print(f"  {Colors.RED}!{Colors.NC}) Abort merge/rebase")
-        
-        print(f"\n{Colors.CYAN}Select action [l/c/m/rb]: {Colors.NC}", end="")
-        action = input().strip().lower()
-        
-        if action == "q":
-            sys.exit(0)
-        elif action == "l":
-            print(f"\n{Colors.CYAN}All branches:{Colors.NC}")
-            local = get_local_branches(repo_path)
-            remote = get_remote_branches(repo_path)
+        if conflict_files:
+            print(f"\n{Colors.CYAN}r) Resolve conflicts  [b] Back to repo select  [q] Quit: {Colors.NC}", end="")
+            action = input().strip().lower()
+            if action == "q":
+                return False
+            elif action == "b":
+                return True
+            elif action != "r":
+                continue
+
+            await resolve_conflicts_interactive(repo_path, repo_name, ollama_url, root_path, in_merge, in_rebase)
+        else:
+            print(f"\n{Colors.CYAN}Actions:{Colors.NC}")
+            print(f"  {Colors.BLUE}l{Colors.NC}) List all branches")
+            print(f"  {Colors.GREEN}c{Colors.NC}) Switch/checkout branch")
+            print(f"  {Colors.GREEN}f{Colors.NC}) Fetch all remotes")
+            print(f"  {Colors.GREEN}m{Colors.NC}) Merge branch into current")
+            print(f"  {Colors.GREEN}rb{Colors.NC}) Rebase onto branch")
+            print(f"  {Colors.BLUE}b{Colors.NC}) Back to repo select")
+            print(f"  {Colors.YELLOW}q{Colors.NC}) Quit")
             
-            print(f"\n{Colors.GREEN}Local branches:{Colors.NC}")
-            if current_branch:
-                for i, b in enumerate(local):
-                    marker = " *" if b == current_branch else ""
-                    print(f"  {i + 1}) {b}{marker}")
-            else:
-                detached_commit = subprocess.run(
-                    ["git", "rev-parse", "--short", "HEAD"],
-                    cwd=repo_path,
-                    capture_output=True,
-                    text=True,
-                ).stdout.strip() or "unknown"
-                print(f"  {Colors.YELLOW}⚠ HEAD detached at {detached_commit}{Colors.NC}")
-                for i, b in enumerate(local):
-                    print(f"  {i + 1}) {b}")
+            if in_merge or in_rebase:
+                print(f"  {Colors.RED}!{Colors.NC}) Abort merge/rebase")
             
-            if remote:
-                print(f"\n{Colors.CYAN}Remote branches:{Colors.NC}")
-                for i, b in enumerate(remote, start=len(local) + 1):
-                    print(f"  {i}) {b}")
-            print("")
-            sys.exit(0)
-        elif action == "f":
-            print(f"\n{Colors.CYAN}Fetching all remotes...{Colors.NC}")
-            if fetch_all(repo_path):
-                print(f"{Colors.GREEN}✓ Fetch complete{Colors.NC}")
-            else:
-                print(f"{Colors.RED}✗ Fetch failed{Colors.NC}")
-            sys.exit(0)
-        elif action == "c":
-            print(f"\n{Colors.CYAN}Available branches:{Colors.NC}")
-            local = get_local_branches(repo_path)
-            remote = get_remote_branches(repo_path)
+            print(f"\n{Colors.CYAN}Select action [l/c/m/rb]: {Colors.NC}", end="")
+            action = input().strip().lower()
             
-            print(f"\n{Colors.GREEN}Local branches:{Colors.NC}")
-            if current_branch:
-                for i, b in enumerate(local):
-                    marker = " *" if b == current_branch else ""
-                    print(f"  {i + 1}) {b}{marker}")
-            else:
-                detached_commit = subprocess.run(
-                    ["git", "rev-parse", "--short", "HEAD"],
-                    cwd=repo_path,
-                    capture_output=True,
-                    text=True,
-                ).stdout.strip() or "unknown"
-                print(f"  {Colors.YELLOW}⚠ HEAD detached at {detached_commit}{Colors.NC}")
-                for i, b in enumerate(local):
-                    print(f"  {i + 1}) {b}")
-            
-            if remote:
-                print(f"\n{Colors.CYAN}Remote branches:{Colors.NC}")
-                for i, b in enumerate(remote, start=len(local) + 1):
-                    print(f"  {i}) {b}")
-            
-            print(f"\n{Colors.CYAN}Branch name (or number, or 'new' for new branch): {Colors.NC}", end="")
-            branch_input = input().strip()
-            
-            if branch_input == "new":
-                print(f"{Colors.CYAN}New branch name: {Colors.NC}", end="")
-                new_branch = input().strip()
-                if new_branch:
-                    if checkout_branch(repo_path, new_branch, create_new=True):
-                        print(f"{Colors.GREEN}✓ Created and switched to {new_branch}{Colors.NC}")
-                    else:
-                        print(f"{Colors.RED}✗ Failed to create branch{Colors.NC}")
-                sys.exit(0)
-            elif branch_input.isdigit():
-                idx = int(branch_input) - 1
-                all_branches = local + remote
-                if 0 <= idx < len(all_branches):
-                    branch_input = all_branches[idx]
+            if action == "q":
+                return False
+            elif action == "b":
+                return True
+            elif action == "l":
+                print(f"\n{Colors.CYAN}All branches:{Colors.NC}")
+                local = get_local_branches(repo_path)
+                remote = get_remote_branches(repo_path)
+                
+                print(f"\n{Colors.GREEN}Local branches:{Colors.NC}")
+                if current_branch:
+                    for i, b in enumerate(local):
+                        marker = " *" if b == current_branch else ""
+                        print(f"  {i + 1}) {b}{marker}")
                 else:
-                    print(f"{Colors.RED}Invalid selection{Colors.NC}")
-                    sys.exit(1)
-            
-            if branch_input.startswith("origin/"):
-                local_name = branch_input.replace("origin/", "")
-                if checkout_branch(repo_path, local_name):
-                    print(f"{Colors.GREEN}✓ Switched to {local_name}{Colors.NC}")
-                else:
-                    print(f"{Colors.YELLOW}Creating local branch {local_name}...{Colors.NC}")
-                    result = subprocess.run(
-                        ["git", "checkout", "-b", local_name, branch_input],
+                    detached_commit = subprocess.run(
+                        ["git", "rev-parse", "--short", "HEAD"],
                         cwd=repo_path,
                         capture_output=True,
                         text=True,
-                    )
-                    if result.returncode == 0:
-                        print(f"{Colors.GREEN}✓ Created {local_name} tracking {branch_input}{Colors.NC}")
-                    else:
-                        print(f"{Colors.RED}✗ Failed: {result.stderr}{Colors.NC}")
-            else:
-                if checkout_branch(repo_path, branch_input):
-                    print(f"{Colors.GREEN}✓ Switched to {branch_input}{Colors.NC}")
+                    ).stdout.strip() or "unknown"
+                    print(f"  {Colors.YELLOW}! HEAD detached at {detached_commit}{Colors.NC}")
+                    for i, b in enumerate(local):
+                        print(f"  {i + 1}) {b}")
+                
+                if remote:
+                    print(f"\n{Colors.CYAN}Remote branches:{Colors.NC}")
+                    for i, b in enumerate(remote, start=len(local) + 1):
+                        print(f"  {i}) {b}")
+                print("")
+                continue
+            elif action == "f":
+                print(f"\n{Colors.CYAN}Fetching all remotes...{Colors.NC}")
+                if fetch_all(repo_path):
+                    print(f"{Colors.GREEN}✓ Fetch complete{Colors.NC}")
                 else:
-                    print(f"{Colors.RED}✗ Failed to checkout {branch_input}{Colors.NC}")
-            sys.exit(0)
-        elif action == "m":
-            print(f"\n{Colors.CYAN}Merge which branch? (or 'fetch' first): {Colors.NC}", end="")
-            branch_to_merge = input().strip()
-            if not branch_to_merge:
-                sys.exit(0)
-            if branch_to_merge == "fetch":
-                fetch_all(repo_path)
-                print(f"{Colors.CYAN}Now enter branch to merge: {Colors.NC}", end="")
+                    print(f"{Colors.RED}✗ Fetch failed{Colors.NC}")
+                continue
+            elif action == "c":
+                local = get_local_branches(repo_path)
+                remote = get_remote_branches(repo_path)
+                
+                print(f"\n{Colors.CYAN}Local branches:{Colors.NC}")
+                if current_branch:
+                    for i, b in enumerate(local):
+                        marker = " *" if b == current_branch else ""
+                        print(f"  {i + 1}) {b}{marker}")
+                else:
+                    detached_commit = subprocess.run(
+                        ["git", "rev-parse", "--short", "HEAD"],
+                        cwd=repo_path,
+                        capture_output=True,
+                        text=True,
+                    ).stdout.strip() or "unknown"
+                    print(f"  {Colors.YELLOW}! HEAD detached at {detached_commit}{Colors.NC}")
+                    for i, b in enumerate(local):
+                        print(f"  {i + 1}) {b}")
+                
+                if remote:
+                    print(f"\n{Colors.CYAN}Remote branches:{Colors.NC}")
+                    for i, b in enumerate(remote, start=len(local) + 1):
+                        print(f"  {i}) {b}")
+                
+                print(f"\n{Colors.CYAN}Branch name (or number, or 'new' for new branch): {Colors.NC}", end="")
+                branch_input = input().strip()
+                
+                if branch_input == "new":
+                    print(f"{Colors.CYAN}New branch name: {Colors.NC}", end="")
+                    new_branch = input().strip()
+                    if new_branch:
+                        if checkout_branch(repo_path, new_branch, create_new=True):
+                            print(f"{Colors.GREEN}✓ Created and switched to {new_branch}{Colors.NC}")
+                        else:
+                            print(f"{Colors.RED}✗ Failed to create branch{Colors.NC}")
+                    continue
+                elif branch_input.isdigit():
+                    idx = int(branch_input) - 1
+                    all_branches = local + remote
+                    if 0 <= idx < len(all_branches):
+                        branch_input = all_branches[idx]
+                    else:
+                        print(f"{Colors.RED}Invalid selection{Colors.NC}")
+                        continue
+                
+                if branch_input.startswith("origin/"):
+                    local_name = branch_input.replace("origin/", "")
+                    if checkout_branch(repo_path, local_name):
+                        print(f"{Colors.GREEN}✓ Switched to {local_name}{Colors.NC}")
+                    else:
+                        print(f"{Colors.YELLOW}Creating local branch {local_name}...{Colors.NC}")
+                        result = subprocess.run(
+                            ["git", "checkout", "-b", local_name, branch_input],
+                            cwd=repo_path,
+                            capture_output=True,
+                            text=True,
+                        )
+                        if result.returncode == 0:
+                            print(f"{Colors.GREEN}✓ Created {local_name} tracking {branch_input}{Colors.NC}")
+                        else:
+                            print(f"{Colors.RED}✗ Failed: {result.stderr}{Colors.NC}")
+                else:
+                    if checkout_branch(repo_path, branch_input):
+                        print(f"{Colors.GREEN}✓ Switched to {branch_input}{Colors.NC}")
+                    else:
+                        print(f"{Colors.RED}✗ Failed to checkout {branch_input}{Colors.NC}")
+                continue
+            elif action == "m":
+                print(f"\n{Colors.CYAN}Merge which branch? (or 'fetch' first): {Colors.NC}", end="")
                 branch_to_merge = input().strip()
                 if not branch_to_merge:
-                    sys.exit(0)
-            
-            remote_branches = get_remote_branches(repo_path)
-            full_branch = branch_to_merge
-            local_branches = get_local_branches(repo_path)
-            if not any(b.endswith(branch_to_merge) for b in local_branches):
-                for rb in remote_branches:
-                    if rb.endswith(branch_to_merge):
-                        full_branch = rb
-                        break
-            
-            if has_changes:
-                print(f"{Colors.YELLOW}Stashing uncommitted changes...{Colors.NC}")
-                subprocess.run(["git", "stash"], cwd=repo_path, capture_output=True)
-            
-            print(f"\n{Colors.CYAN}Merging {full_branch} into {current_branch}...{Colors.NC}")
-            if not initiate_merge(repo_path, full_branch):
-                print(f"{Colors.YELLOW}Merge initiated (check for conflicts){Colors.NC}")
-            
-            current_branch = get_current_branch(repo_path)
-            conflict_files = get_conflict_files(repo_path)
-            
-            if not conflict_files:
-                print(f"{Colors.GREEN}✓ No conflicts! Merge complete.{Colors.NC}")
+                    continue
+                if branch_to_merge == "fetch":
+                    fetch_all(repo_path)
+                    print(f"{Colors.CYAN}Now enter branch to merge: {Colors.NC}", end="")
+                    branch_to_merge = input().strip()
+                    if not branch_to_merge:
+                        continue
+                
+                remote_branches = get_remote_branches(repo_path)
+                full_branch = branch_to_merge
+                local_branches = get_local_branches(repo_path)
+                if not any(b.endswith(branch_to_merge) for b in local_branches):
+                    for rb in remote_branches:
+                        if rb.endswith(branch_to_merge):
+                            full_branch = rb
+                            break
+                
                 if has_changes:
-                    subprocess.run(["git", "stash", "pop"], cwd=repo_path, capture_output=True)
-            else:
-                print(f"{Colors.YELLOW}Merge initiated with conflicts. Run ai-conflict.py again to resolve.{Colors.NC}")
-            sys.exit(0)
-        elif action == "rb":
-            print(f"\n{Colors.CYAN}Rebase onto which branch? (or 'fetch' first): {Colors.NC}", end="")
-            branch_to_rebase = input().strip()
-            if not branch_to_rebase:
-                sys.exit(0)
-            if branch_to_rebase == "fetch":
-                fetch_all(repo_path)
-                print(f"{Colors.CYAN}Now enter branch to rebase onto: {Colors.NC}", end="")
+                    print(f"{Colors.YELLOW}Stashing uncommitted changes...{Colors.NC}")
+                    subprocess.run(["git", "stash"], cwd=repo_path, capture_output=True)
+                
+                print(f"\n{Colors.CYAN}Merging {full_branch} into {current_branch}...{Colors.NC}")
+                if not initiate_merge(repo_path, full_branch):
+                    print(f"{Colors.YELLOW}Merge initiated (check for conflicts){Colors.NC}")
+                
+                conflict_files = get_conflict_files(repo_path)
+                
+                if not conflict_files:
+                    print(f"{Colors.GREEN}✓ No conflicts! Merge complete.{Colors.NC}")
+                    if has_changes:
+                        subprocess.run(["git", "stash", "pop"], cwd=repo_path, capture_output=True)
+                else:
+                    print(f"{Colors.YELLOW}Merge initiated with conflicts. Resolving...{Colors.NC}")
+                continue
+            elif action == "rb":
+                print(f"\n{Colors.CYAN}Rebase onto which branch? (or 'fetch' first): {Colors.NC}", end="")
                 branch_to_rebase = input().strip()
                 if not branch_to_rebase:
-                    sys.exit(0)
-            
-            remote_branches = get_remote_branches(repo_path)
-            full_branch = branch_to_rebase
-            local_branches = get_local_branches(repo_path)
-            if not any(b.endswith(branch_to_rebase) for b in local_branches):
-                for rb in remote_branches:
-                    if rb.endswith(branch_to_rebase):
-                        full_branch = rb
-                        break
-            
-            if has_changes:
-                print(f"{Colors.YELLOW}Stashing uncommitted changes...{Colors.NC}")
-                subprocess.run(["git", "stash"], cwd=repo_path, capture_output=True)
-            
-            print(f"\n{Colors.CYAN}Rebasing onto {full_branch}...{Colors.NC}")
-            if not initiate_rebase(repo_path, full_branch):
-                print(f"{Colors.YELLOW}Rebase initiated (check for conflicts){Colors.NC}")
-            
-            current_branch = get_current_branch(repo_path)
-            conflict_files = get_conflict_files(repo_path)
-            
-            if not conflict_files:
-                print(f"{Colors.GREEN}✓ No conflicts! Rebase complete.{Colors.NC}")
+                    continue
+                if branch_to_rebase == "fetch":
+                    fetch_all(repo_path)
+                    print(f"{Colors.CYAN}Now enter branch to rebase onto: {Colors.NC}", end="")
+                    branch_to_rebase = input().strip()
+                    if not branch_to_rebase:
+                        continue
+                
+                remote_branches = get_remote_branches(repo_path)
+                full_branch = branch_to_rebase
+                local_branches = get_local_branches(repo_path)
+                if not any(b.endswith(branch_to_rebase) for b in local_branches):
+                    for rb in remote_branches:
+                        if rb.endswith(branch_to_rebase):
+                            full_branch = rb
+                            break
+                
                 if has_changes:
-                    subprocess.run(["git", "stash", "pop"], cwd=repo_path, capture_output=True)
+                    print(f"{Colors.YELLOW}Stashing uncommitted changes...{Colors.NC}")
+                    subprocess.run(["git", "stash"], cwd=repo_path, capture_output=True)
+                
+                print(f"\n{Colors.CYAN}Rebasing onto {full_branch}...{Colors.NC}")
+                if not initiate_rebase(repo_path, full_branch):
+                    print(f"{Colors.YELLOW}Rebase initiated (check for conflicts){Colors.NC}")
+                
+                conflict_files = get_conflict_files(repo_path)
+                
+                if not conflict_files:
+                    print(f"{Colors.GREEN}✓ No conflicts! Rebase complete.{Colors.NC}")
+                    if has_changes:
+                        subprocess.run(["git", "stash", "pop"], cwd=repo_path, capture_output=True)
+                else:
+                    print(f"{Colors.YELLOW}Rebase initiated with conflicts. Resolving...{Colors.NC}")
+                continue
+            elif action == "!":
+                if abort_rebase_or_merge(repo_path):
+                    print(f"{Colors.GREEN}✓ Aborted{Colors.NC}")
+                else:
+                    print(f"{Colors.RED}✗ Failed to abort{Colors.NC}")
+                continue
             else:
-                print(f"{Colors.YELLOW}Rebase initiated with conflicts. Run ai-conflict.py again to resolve.{Colors.NC}")
-            sys.exit(0)
-        elif action == "!":
-            if abort_rebase_or_merge(repo_path):
-                print(f"{Colors.GREEN}✓ Aborted{Colors.NC}")
-            sys.exit(0)
-        else:
-            print(f"{Colors.RED}Invalid action{Colors.NC}")
-            sys.exit(1)
+                print(f"{Colors.RED}Invalid action{Colors.NC}")
+                continue
 
-    print(f"\n{Colors.RED}⚠ {len(conflict_files)} file(s) with conflicts:{Colors.NC}")
-    for f in conflict_files:
-        print(f"  {Colors.RED}●{Colors.NC} {f}")
+
+async def resolve_conflicts_interactive(repo_path: str, repo_name: str, ollama_url: str, root_path: str, in_merge: bool, in_rebase: bool):
+    conflict_files = get_conflict_files(repo_path)
+    
+    if not conflict_files:
+        print(f"{Colors.GREEN}No conflicts remaining!{Colors.NC}")
+        return
 
     if not is_ollama_running(ollama_url):
         print(f"\n{Colors.YELLOW}Ollama is not running.{Colors.NC}")
-        print(f"{Colors.CYAN}[s] Start automatically  [m] Pull models  [q] Quit: {Colors.NC}", end="")
+        print(f"{Colors.CYAN}[s] Start automatically  [m] Pull models  [b] Back: {Colors.NC}", end="")
         response = input().strip().lower()
         if response == "s":
             if not start_ollama(root_path, ollama_url):
                 print(f"{Colors.RED}Could not start Ollama. Please start it manually.{Colors.NC}")
-                sys.exit(1)
+                return
         elif response == "m":
             check_script = find_check_ollama_script(root_path)
             if check_script:
                 print(f"\n{Colors.CYAN}Running check-ollama-models.sh...{Colors.NC}")
                 subprocess.run([check_script], cwd=root_path)
             else:
-                print(f"{Colors.YELLOW}check-ollama-models.sh not found. Please install models manually.{Colors.NC}")
-            sys.exit(0)
-        elif response != "":
-            sys.exit(0)
+                print(f"{Colors.YELLOW}check-ollama-models.sh not found.{Colors.NC}")
+            return
+        elif response == "b":
+            return
+        else:
+            return
 
     async with Spinner(f"Connecting to Ollama at {ollama_url}..."):
         models = await get_ollama_models(ollama_url)
@@ -902,7 +887,7 @@ async def main():
     if not models:
         print(f"{Colors.YELLOW}No models found in Ollama.{Colors.NC}")
         print(f"{Colors.RED}No models available.{Colors.NC}")
-        sys.exit(1)
+        return
 
     if len(models) == 1:
         model = models[0]
@@ -917,6 +902,7 @@ async def main():
     print(f"{Colors.GREEN}Using model: {model}{Colors.NC}\n")
 
     merge_head = get_merge_head(repo_path)
+    auto_resolve = "-y" in sys.argv or "--yes" in sys.argv
     
     resolved_count = 0
     skipped_count = 0
@@ -935,7 +921,7 @@ async def main():
         theirs_content = conflict_data["theirs"]
         
         if not ours_content or not theirs_content:
-            print(f"{Colors.YELLOW}⚠{Colors.NC} {file_path} - no clear conflict markers found")
+            print(f"{Colors.YELLOW}! {file_path} - no clear conflict markers found")
             continue
 
         base_content = ""
@@ -978,11 +964,52 @@ async def main():
             if continue_rebase_or_merge(repo_path):
                 print(f"{Colors.GREEN}✓ Merge/rebase completed{Colors.NC}")
             else:
-                print(f"{Colors.YELLOW}⚠ Could not auto-continue. Run 'git commit' or 'git rebase --continue' manually.{Colors.NC}")
+                print(f"{Colors.YELLOW}! Could not auto-continue. Run 'git commit' or 'git rebase --continue' manually.{Colors.NC}")
         else:
             print(f"{Colors.CYAN}Run 'git commit' to complete merge or 'git rebase --continue' for rebase.{Colors.NC}")
     
     print(f"\n{Colors.CYAN}To abort and revert: git merge --abort  or  git rebase --abort{Colors.NC}")
+
+
+async def main():
+    auto_resolve = "-y" in sys.argv or "--yes" in sys.argv
+    ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    root_path = find_script_git_root()
+
+    print(f"{Colors.CYAN}╔{'═'*56}╗{Colors.NC}")
+    print(f"{Colors.CYAN}║{' AI Conflict Resolver (Deepiri) ':^56}║{Colors.NC}")
+    print(f"{Colors.CYAN}╚{'═'*56}╝{Colors.NC}\n")
+
+    repos = find_git_repos(root_path)
+    
+    if not repos:
+        print(f"{Colors.RED}No git repositories found.{Colors.NC}")
+        sys.exit(1)
+
+    while True:
+        print(f"{Colors.CYAN}Select repository:{Colors.NC}")
+        for i, repo in enumerate(repos):
+            print(f"  {i + 1}) {repo['name']}")
+        print(f"\n{Colors.CYAN}[1-{len(repos)}] (or 'q' to quit): {Colors.NC}", end="")
+        
+        selection_input = input().strip().lower()
+        if selection_input == "q":
+            break
+        
+        try:
+            selection = int(selection_input) - 1
+            if selection < 0 or selection >= len(repos):
+                print(f"{Colors.RED}Invalid selection.{Colors.NC}")
+                continue
+        except ValueError:
+            print(f"{Colors.RED}Invalid input.{Colors.NC}")
+            continue
+        
+        repo = repos[selection]
+        
+        should_exit = await run_interactive(repo, root_path, ollama_url)
+        if should_exit is False:
+            break
 
 
 if __name__ == "__main__":
