@@ -12,16 +12,20 @@ git clone git@github.com:Team-Deepiri/deepiri-platform.git
 cd deepiri-platform
 
 # 2. Initialize submodules
-./team_submodule_commands/platform-engineers/pull_submodules.sh
+./team_submodule_commands/your_team_folder//pull_submodules.sh
 
-# 3. Build all services
-./team_dev_environments/platform-engineers/build.sh
+# 3. Build services
+./team_dev_environments/your_team_folder/build.sh
 
 # 4. Start the full stack
-./team_dev_environments/platform-engineers/start.sh
+./team_dev_environments/your_team_folder/start.sh
 
 # OR use docker compose directly
-docker compose -f docker-compose.dev.yml up -d
+docker compose -f docker-compose.dev.yml up -d <serivce> 
+
+# All services
+
+docker compose -f docker-compose.dev.yml up -d 
 
 # 5. Access services
 # - Frontend: http://localhost:5173
