@@ -333,6 +333,87 @@ def get_conflict_files(repo_path: str) -> list[str]:
         return []
 
 
+def is_submodule_path(repo_path: str, file_path: str) -> bool:
+    """Check if a conflict path corresponds to a submodule (not a regular file)."""
+    full_path = os.path.join(repo_path, file_path)
+    if os.path.isdir(full_path):
+        return True
+    # Also check via git ls-files -u -- the mode 160000 means submodule
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "-u", "--", file_path],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+        )
+        for line in result.stdout.strip().split("\n"):
+            if line.startswith("160000"):
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def resolve_submodule_conflict(repo_path: str, file_path: str) -> bool:
+    """Resolve a submodule pointer conflict by picking the commit with the latest timestamp."""
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "-u", "--", file_path],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+        )
+        # Lines look like: "160000 <hash> <stage>\t<path>"
+        # stage 2 = ours, stage 3 = theirs
+        candidates = {}
+        for line in result.stdout.strip().split("\n"):
+            if not line:
+                continue
+            parts = line.split()
+            if len(parts) >= 3 and parts[0] == "160000":
+                commit_hash = parts[1]
+                stage = parts[2].rstrip("\t")
+                if stage in ("2", "3"):
+                    candidates[stage] = commit_hash
+
+        if not candidates:
+            return False
+
+        # Get commit timestamps for each candidate
+        def get_commit_time(hash_val: str) -> int:
+            try:
+                r = subprocess.run(
+                    ["git", "log", "--format=%ct", "-1", hash_val],
+                    cwd=repo_path,
+                    capture_output=True,
+                    text=True,
+                )
+                return int(r.stdout.strip()) if r.returncode == 0 and r.stdout.strip() else 0
+            except Exception:
+                return 0
+
+        best_hash = None
+        best_time = -1
+        for stage, hash_val in candidates.items():
+            t = get_commit_time(hash_val)
+            if t > best_time:
+                best_time = t
+                best_hash = hash_val
+
+        if not best_hash:
+            # Fall back to "theirs" (stage 3) if we can't determine timestamps
+            best_hash = candidates.get("3") or candidates.get("2")
+
+        subprocess.run(
+            ["git", "update-index", "--cacheinfo", f"160000,{best_hash},{file_path}"],
+            cwd=repo_path,
+            capture_output=True,
+        )
+        return True
+    except Exception:
+        return False
+
+
 def get_current_branch(repo_path: str) -> str:
     try:
         result = subprocess.run(
@@ -627,7 +708,7 @@ def review_and_decide(result: dict) -> str:
             return decision
 
 
-async def send_to_ollama(base_url: str, model: str, prompt: str, system: str = "") -> str:
+async def send_to_ollama(base_url: str, model: str, prompt: str, system: str = "", silent: bool = False) -> str:
     messages = []
     if system:
         messages.append({"role": "system", "content": system})
@@ -647,8 +728,9 @@ async def send_to_ollama(base_url: str, model: str, prompt: str, system: str = "
     }
 
     try:
-        print(f"{Colors.GRAY}Resolving...{Colors.NC}")
-        accumulated = ""
+        if not silent:
+            print(f"{Colors.GRAY}Resolving...{Colors.NC}")
+        tokens: list[str] = []
         async with httpx.AsyncClient(timeout=180.0) as client:
             async with client.stream("POST", f"{base_url}/api/chat", json=payload) as response:
                 response.raise_for_status()
@@ -658,12 +740,14 @@ async def send_to_ollama(base_url: str, model: str, prompt: str, system: str = "
                     chunk = json.loads(line)
                     token = chunk.get("message", {}).get("content", "")
                     if token:
-                        print(token, end="", flush=True)
-                        accumulated += token
+                        if not silent:
+                            print(token, end="", flush=True)
+                        tokens.append(token)
                     if chunk.get("done"):
                         break
-        print()
-        return accumulated
+        if not silent:
+            print()
+        return "".join(tokens)
     except Exception as e:
         print(f"{Colors.RED}Error sending request to Ollama: {e}{Colors.NC}")
         sys.exit(1)
@@ -688,6 +772,7 @@ async def resolve_file_with_context(
     head_branch: str,
     base_branch: str,
     explanation_mode: bool = False,
+    silent: bool = False,
 ) -> dict:
     merge_base = get_merge_base(repo_path, head_branch, base_branch)
     
@@ -752,7 +837,7 @@ CHANGES SUMMARY (diff between base and head):
 {explanation_instruction}
 Resolve this conflict and output ONLY the final resolved file content."""
 
-    response = await send_to_ollama(base_url, model, user_prompt, system=system_prompt)
+    response = await send_to_ollama(base_url, model, user_prompt, system=system_prompt, silent=silent)
 
     explanation = ""
     if explanation_mode and "<<<EXPLANATION>>>" in response:
@@ -840,10 +925,16 @@ async def main():
         in_merge = os.path.isfile(os.path.join(repo_path, ".git", "MERGE_HEAD"))
         in_rebase = os.path.isdir(os.path.join(repo_path, ".git", "rebase-merge"))
 
+        is_sub = repo.get("is_submodule", False)
+        repo_label = f"{repo_name} (submodule)" if is_sub else repo_name
         print(f"\n{Colors.CYAN}╔{'─'*58}╗{Colors.NC}")
-        print(f"{Colors.CYAN}║ Repository: {repo_name:<47}║{Colors.NC}")
+        print(f"{Colors.CYAN}║ Repository: {repo_label:<47}║{Colors.NC}")
         print(f"{Colors.CYAN}╠{'─'*58}╣{Colors.NC}")
         print(f"{Colors.CYAN}║ Branch: {Colors.BLUE}{current_branch or '(detached)':<50}{Colors.CYAN}║{Colors.NC}")
+        if is_sub:
+            parent_branch = get_current_branch(root_path)
+            parent_label = f"Parent branch: {parent_branch}" if parent_branch else "Parent branch: unknown"
+            print(f"{Colors.CYAN}║ {Colors.YELLOW}{parent_label:<57}{Colors.CYAN}║{Colors.NC}")
         if has_changes:
             print(f"{Colors.CYAN}║ {Colors.YELLOW}! Uncommitted changes{Colors.CYAN}{' ' * 37}║{Colors.NC}")
         if in_merge:
@@ -1191,9 +1282,20 @@ async def handle_resolve_conflicts_between_branches(repo_path: str, repo_name: s
 
     for i, file_path in enumerate(conflict_files):
         full_path = os.path.join(repo_path, file_path)
-        
+
         print(f"\n{Colors.CYAN}[{i+1}/{len(conflict_files)}] {file_path}{Colors.NC}")
-        
+
+        # Handle submodule pointer conflicts specially
+        if is_submodule_path(repo_path, file_path):
+            print(f"  {Colors.YELLOW}Submodule pointer conflict — picking latest commit...{Colors.NC}")
+            if resolve_submodule_conflict(repo_path, file_path):
+                print(f"  {Colors.GREEN}Resolved submodule pointer: {file_path}{Colors.NC}")
+                resolved += 1
+            else:
+                print(f"  {Colors.RED}Could not auto-resolve submodule pointer: {file_path}{Colors.NC}")
+                skipped += 1
+            continue
+
         result = await resolve_file_with_context(
             base_url=ollama_url,
             model=model,
@@ -1201,9 +1303,10 @@ async def handle_resolve_conflicts_between_branches(repo_path: str, repo_name: s
             file_path=file_path,
             head_branch=head_branch,
             base_branch=base_branch,
-            explanation_mode=review_mode
+            explanation_mode=review_mode,
+            silent=not review_mode,
         )
-        
+
         if review_mode:
             decision = review_and_decide(result)
 
@@ -1226,19 +1329,19 @@ async def handle_resolve_conflicts_between_branches(repo_path: str, repo_name: s
         else:
             print(f"  {Colors.GREEN}Resolved: {file_path}{Colors.NC}")
             decision = "y"
-        
+
         if decision == "y":
             with open(full_path, "w") as f:
                 f.write(result["content"])
             resolved += 1
-    
+
     print(f"\n{Colors.CYAN}{'='*60}{Colors.NC}")
     print(f"{Colors.GREEN}Resolution complete!{Colors.NC}")
     print(f"  Resolved: {resolved}")
     if skipped:
         print(f"  Skipped: {skipped}")
     print(f"{Colors.CYAN}{'='*60}{Colors.NC}")
-    
+
     if resolved > 0:
         subprocess.run(["git", "add", "-A"], cwd=repo_path, capture_output=True)
         
@@ -1421,9 +1524,21 @@ async def resolve_merge_conflicts(
     
     for i, file_path in enumerate(conflict_files):
         full_path = os.path.join(repo_path, file_path)
-        
+
         print(f"\n{Colors.CYAN}[{i+1}/{len(conflict_files)}] Processing: {file_path}{Colors.NC}")
-        
+
+        # Handle submodule pointer conflicts specially
+        if is_submodule_path(repo_path, file_path):
+            print(f"  {Colors.YELLOW}Submodule pointer conflict — picking latest commit...{Colors.NC}")
+            if resolve_submodule_conflict(repo_path, file_path):
+                print(f"  {Colors.GREEN}Resolved submodule pointer: {file_path}{Colors.NC}")
+                subprocess.run(["git", "add", file_path], cwd=repo_path, capture_output=True)
+                resolved += 1
+            else:
+                print(f"  {Colors.RED}Could not auto-resolve submodule pointer: {file_path}{Colors.NC}")
+                skipped += 1
+            continue
+
         result = await resolve_file_with_context(
             base_url=ollama_url,
             model=model,
@@ -1431,9 +1546,10 @@ async def resolve_merge_conflicts(
             file_path=file_path,
             head_branch=incoming_branch,
             base_branch=current_branch,
-            explanation_mode=review_mode
+            explanation_mode=review_mode,
+            silent=not review_mode,
         )
-        
+
         if review_mode:
             decision = review_and_decide(result)
 
@@ -1456,7 +1572,7 @@ async def resolve_merge_conflicts(
         else:
             print(f"  {Colors.GREEN}Resolved: {file_path}{Colors.NC}")
             decision = "y"
-        
+
         if decision == "y":
             with open(full_path, "w") as f:
                 f.write(result["content"])
@@ -1486,7 +1602,7 @@ async def resolve_merge_conflicts(
                 
                 if action == "p":
                     result = subprocess.run(
-                        ["git", "push", "origin", current_branch],
+                        ["git", "push", "-u", "origin", current_branch],
                         cwd=repo_path,
                         capture_output=True,
                         text=True,
