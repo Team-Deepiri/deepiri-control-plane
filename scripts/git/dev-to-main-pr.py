@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """
 Dev-to-Main PR Creator for Deepiri
-Creates pull requests across all 24 Deepiri repositories via GitHub CLI.
+Always creates dev → main PRs across all 24 repos via GitHub CLI.
 No local clones required — operates entirely through the GitHub API.
 
 Usage:
-  python dev-to-main-pr.py              # interactive mode
-  python dev-to-main-pr.py --bulk       # bulk mode (same branch/title for all repos)
+  python dev-to-main-pr.py              # process all repos
   python dev-to-main-pr.py --draft      # create PRs as drafts
   python dev-to-main-pr.py --dry-run    # preview only, no PRs created
 """
@@ -29,6 +28,8 @@ class Colors:
 
 
 GITHUB_ORG = "Team-Deepiri"
+HEAD_BRANCH = "dev"
+BASE_BRANCH = "main"
 
 DEEPIRI_REPOS = [
     "deepiri-modelkit",
@@ -66,12 +67,8 @@ def gh(*args: str) -> subprocess.CompletedProcess:
     return subprocess.run(["gh"] + list(args), capture_output=True, text=True)
 
 
-def gh_api(path: str, method: str = "GET", fields: Optional[dict] = None) -> tuple[int, any]:
-    cmd = ["gh", "api", path, "-X", method]
-    if fields:
-        for k, v in fields.items():
-            cmd += ["-f", f"{k}={v}"]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+def gh_api(path: str) -> tuple[int, any]:
+    result = subprocess.run(["gh", "api", path], capture_output=True, text=True)
     try:
         data = json.loads(result.stdout) if result.stdout.strip() else {}
     except json.JSONDecodeError:
@@ -87,22 +84,12 @@ def repo_slug(repo_name: str) -> str:
     return f"{GITHUB_ORG}/{repo_name}"
 
 
-def get_repo_branches(repo_name: str) -> list[str]:
-    code, data = gh_api(f"repos/{repo_slug(repo_name)}/branches?per_page=100")
-    if code != 0 or not isinstance(data, list):
-        return []
-    return [b["name"] for b in data]
-
-
-def get_default_branch(repo_name: str) -> str:
-    code, data = gh_api(f"repos/{repo_slug(repo_name)}")
-    if code == 0 and isinstance(data, dict):
-        return data.get("default_branch", "main")
-    return "main"
+def branch_exists(repo_name: str, branch: str) -> bool:
+    code, data = gh_api(f"repos/{repo_slug(repo_name)}/branches/{branch}")
+    return code == 0 and isinstance(data, dict) and "name" in data
 
 
 def get_compare(repo_name: str, base: str, head: str) -> dict:
-    """Returns GitHub compare data: ahead_by, commits list, files."""
     code, data = gh_api(f"repos/{repo_slug(repo_name)}/compare/{base}...{head}")
     if code != 0 or not isinstance(data, dict):
         return {}
@@ -127,19 +114,12 @@ def pr_exists(repo_name: str, head_branch: str, base_branch: str) -> Optional[st
     return None
 
 
-def create_pr(
-    repo_name: str,
-    head_branch: str,
-    base_branch: str,
-    title: str,
-    body: str,
-    draft: bool = False,
-) -> tuple[bool, str]:
+def create_pr(repo_name: str, title: str, body: str, draft: bool = False) -> tuple[bool, str]:
     args = [
         "pr", "create",
         "--repo", repo_slug(repo_name),
-        "--head", head_branch,
-        "--base", base_branch,
+        "--head", HEAD_BRANCH,
+        "--base", BASE_BRANCH,
         "--title", title,
         "--body", body,
     ]
@@ -159,7 +139,7 @@ def print_banner():
     print(f"{Colors.CYAN}")
     print(f"╔{'═'*60}╗")
     print(f"║{'  Dev → Main PR Creator (Deepiri)  ':^60}║")
-    print(f"║{'  24 repos · GitHub API · no local clones needed  ':^60}║")
+    print(f"║{'  24 repos · dev → main · GitHub API  ':^60}║")
     print(f"╚{'═'*60}╝{Colors.NC}")
     print()
 
@@ -171,105 +151,39 @@ def print_repo_header(name: str, index: int, total: int):
     print(f"{Colors.CYAN}╚{'─'*58}╝{Colors.NC}")
 
 
-def select_branch(prompt: str, branches: list[str], allow_custom: bool = True) -> Optional[str]:
-    if not branches:
-        if allow_custom:
-            print(f"  {Colors.CYAN}No branches found. Enter name (blank to skip): {Colors.NC}", end="")
-            val = input().strip()
-            return val if val else None
-        return None
-
-    for i, b in enumerate(branches):
-        print(f"    {Colors.BLUE}{i + 1}){Colors.NC} {b}")
-
-    suffix = ", or type a name" if allow_custom else ""
-    print(f"  {Colors.CYAN}{prompt} [1-{len(branches)}{suffix}, 's' to skip]: {Colors.NC}", end="")
-    val = input().strip()
-
-    if val.lower() == "s":
-        return None
-    try:
-        idx = int(val) - 1
-        if 0 <= idx < len(branches):
-            return branches[idx]
-        print(f"  {Colors.RED}Invalid number, skipping.{Colors.NC}")
-        return None
-    except ValueError:
-        return val if (allow_custom and val) else None
-
-
 # ---------------------------------------------------------------------------
 # Per-repo handler
 # ---------------------------------------------------------------------------
 
-def handle_repo(
-    repo_name: str,
-    index: int,
-    total: int,
-    bulk_head: Optional[str],
-    bulk_base: Optional[str],
-    bulk_title: Optional[str],
-    bulk_body: Optional[str],
-    draft: bool,
-    dry_run: bool,
-) -> dict:
+def handle_repo(repo_name: str, index: int, total: int, draft: bool, dry_run: bool) -> dict:
     print_repo_header(repo_name, index, total)
 
-    print(f"  {Colors.GRAY}Loading branches from GitHub...{Colors.NC}", end="", flush=True)
-    branches = get_repo_branches(repo_name)
-    if branches is None:
-        branches = []
-    print(f" {len(branches)} found")
-
-    if not branches:
-        print(f"  {Colors.YELLOW}Could not load branches (repo may be empty or inaccessible), skipping.{Colors.NC}")
-        return {"repo": repo_name, "status": "skipped", "reason": "no branches accessible"}
-
-    # Head branch
-    if bulk_head:
-        if bulk_head not in branches:
-            print(f"  {Colors.YELLOW}Branch '{bulk_head}' not found in {repo_name}, skipping.{Colors.NC}")
-            return {"repo": repo_name, "status": "skipped", "reason": f"branch '{bulk_head}' not found"}
-        head_branch = bulk_head
-    else:
-        print(f"  {Colors.CYAN}Select HEAD (feature/dev) branch:{Colors.NC}")
-        head_branch = select_branch("Head branch", branches)
-        if not head_branch:
-            return {"repo": repo_name, "status": "skipped", "reason": "user skipped"}
-
-    # Base branch
-    if bulk_base:
-        base_branch = bulk_base
-    else:
-        default = get_default_branch(repo_name)
-        base_candidates = list(dict.fromkeys(
-            [b for b in [default, "main", "master", "develop"] if b in branches]
-        ))
-        print(f"  {Colors.CYAN}Select BASE branch (default: {default}):{Colors.NC}")
-        base_branch = select_branch("Base branch", base_candidates) or default
-
-    print(f"  {Colors.GREEN}{head_branch}{Colors.NC} → {Colors.BLUE}{base_branch}{Colors.NC}")
-
-    if head_branch == base_branch:
-        print(f"  {Colors.YELLOW}Head and base are the same branch, skipping.{Colors.NC}")
-        return {"repo": repo_name, "status": "skipped", "reason": "same branch"}
+    # Check branches exist
+    print(f"  {Colors.GRAY}Checking branches...{Colors.NC}", end="", flush=True)
+    if not branch_exists(repo_name, HEAD_BRANCH):
+        print(f"\n  {Colors.YELLOW}Branch '{HEAD_BRANCH}' not found, skipping.{Colors.NC}")
+        return {"repo": repo_name, "status": "skipped", "reason": f"no '{HEAD_BRANCH}' branch"}
+    if not branch_exists(repo_name, BASE_BRANCH):
+        print(f"\n  {Colors.YELLOW}Branch '{BASE_BRANCH}' not found, skipping.{Colors.NC}")
+        return {"repo": repo_name, "status": "skipped", "reason": f"no '{BASE_BRANCH}' branch"}
+    print(f" {Colors.GREEN}{HEAD_BRANCH}{Colors.NC} → {Colors.BLUE}{BASE_BRANCH}{Colors.NC}")
 
     # Check existing PR
-    existing = pr_exists(repo_name, head_branch, base_branch)
+    existing = pr_exists(repo_name, HEAD_BRANCH, BASE_BRANCH)
     if existing:
         print(f"  {Colors.YELLOW}PR already exists: {existing}{Colors.NC}")
         return {"repo": repo_name, "status": "exists", "url": existing}
 
-    # Compare branches via GitHub API
-    print(f"  {Colors.GRAY}Comparing branches...{Colors.NC}", end="", flush=True)
-    compare = get_compare(repo_name, base_branch, head_branch)
+    # Compare branches
+    print(f"  {Colors.GRAY}Comparing {HEAD_BRANCH}...{BASE_BRANCH}...{Colors.NC}", end="", flush=True)
+    compare = get_compare(repo_name, BASE_BRANCH, HEAD_BRANCH)
     ahead_by = compare.get("ahead_by", 0)
     commits = compare.get("commits", [])
     files = compare.get("files", [])
     print(f" {ahead_by} commit(s) ahead")
 
     if ahead_by == 0:
-        print(f"  {Colors.YELLOW}No commits ahead of '{base_branch}', skipping.{Colors.NC}")
+        print(f"  {Colors.YELLOW}Nothing to merge — {HEAD_BRANCH} is even with {BASE_BRANCH}, skipping.{Colors.NC}")
         return {"repo": repo_name, "status": "skipped", "reason": "no commits ahead"}
 
     if commits:
@@ -284,43 +198,22 @@ def handle_repo(
     if files:
         additions = sum(f.get("additions", 0) for f in files)
         deletions = sum(f.get("deletions", 0) for f in files)
-        print(f"  {Colors.CYAN}Changed files: {len(files)}  +{additions} -{deletions}{Colors.NC}")
+        print(f"  {Colors.CYAN}Files changed: {len(files)}  +{additions} -{deletions}{Colors.NC}")
 
-    # PR title
-    if bulk_title:
-        title = bulk_title
-    else:
-        first_msg = ""
-        if commits:
-            first_msg = commits[-1].get("commit", {}).get("message", "").split("\n")[0]
-        default_title = first_msg or f"Merge {head_branch} into {base_branch}"
-        print(f"  {Colors.CYAN}PR title [{default_title}]: {Colors.NC}", end="")
-        t = input().strip()
-        title = t if t else default_title
-
-    # PR body
-    if bulk_body:
-        body = bulk_body
-    else:
-        auto_body = "## Summary\n\n"
-        for c in commits[:10]:
-            msg = c.get("commit", {}).get("message", "").split("\n")[0]
-            auto_body += f"- {msg}\n"
-        auto_body += "\n🤖 Created with dev-to-main-pr.py"
-        print(f"  {Colors.CYAN}Use auto-generated body? [Y/n]: {Colors.NC}", end="")
-        if input().strip().lower() not in ("", "y"):
-            print(f"  {Colors.CYAN}Enter body (use \\n for newlines): {Colors.NC}", end="")
-            b = input().strip()
-            body = b.replace("\\n", "\n") if b else auto_body
-        else:
-            body = auto_body
+    # Auto-generate title and body
+    title = f"Merge {HEAD_BRANCH} into {BASE_BRANCH}"
+    body = "## Summary\n\n"
+    for c in commits[:10]:
+        msg = c.get("commit", {}).get("message", "").split("\n")[0]
+        body += f"- {msg}\n"
+    body += "\n🤖 Created with dev-to-main-pr.py"
 
     if dry_run:
-        print(f"  {Colors.YELLOW}[DRY RUN] Would create: '{title}' ({head_branch} → {base_branch}){Colors.NC}")
+        print(f"  {Colors.YELLOW}[DRY RUN] Would create: '{title}'{Colors.NC}")
         return {"repo": repo_name, "status": "dry_run", "title": title}
 
     print(f"  {Colors.GRAY}Creating PR...{Colors.NC}")
-    ok, url_or_err = create_pr(repo_name, head_branch, base_branch, title, body, draft=draft)
+    ok, url_or_err = create_pr(repo_name, title, body, draft=draft)
     if ok:
         print(f"  {Colors.GREEN}PR created: {url_or_err}{Colors.NC}")
         return {"repo": repo_name, "status": "created", "url": url_or_err}
@@ -336,7 +229,6 @@ def handle_repo(
 def main():
     dry_run = "--dry-run" in sys.argv or "-n" in sys.argv
     draft = "--draft" in sys.argv or "-d" in sys.argv
-    bulk_mode = "--bulk" in sys.argv or "-b" in sys.argv
 
     print_banner()
 
@@ -350,28 +242,7 @@ def main():
         print(f"{Colors.YELLOW}[DRAFT mode — PRs will be created as drafts]{Colors.NC}\n")
 
     print(f"{Colors.CYAN}Targeting org: {Colors.BOLD}{GITHUB_ORG}{Colors.NC}")
-    print(f"{Colors.CYAN}Repos: {len(DEEPIRI_REPOS)} hardcoded{Colors.NC}\n")
-
-    # Bulk mode config
-    bulk_head: Optional[str] = None
-    bulk_base: Optional[str] = None
-    bulk_title: Optional[str] = None
-    bulk_body: Optional[str] = None
-
-    if bulk_mode:
-        print(f"{Colors.CYAN}╔{'─'*58}╗{Colors.NC}")
-        print(f"{Colors.CYAN}║ {'BULK MODE — same settings applied to all repos':^57}║{Colors.NC}")
-        print(f"{Colors.CYAN}╚{'─'*58}╝{Colors.NC}")
-        print(f"{Colors.CYAN}Head (feature/dev) branch name: {Colors.NC}", end="")
-        bulk_head = input().strip() or None
-        print(f"{Colors.CYAN}Base branch (blank = each repo's default): {Colors.NC}", end="")
-        bulk_base = input().strip() or None
-        print(f"{Colors.CYAN}PR title (blank = auto per repo): {Colors.NC}", end="")
-        bulk_title = input().strip() or None
-        print(f"{Colors.CYAN}PR body (blank = auto per repo, use \\n for newlines): {Colors.NC}", end="")
-        b = input().strip()
-        bulk_body = b.replace("\\n", "\n") if b else None
-        print()
+    print(f"{Colors.CYAN}Repos: {len(DEEPIRI_REPOS)} · {HEAD_BRANCH} → {BASE_BRANCH}{Colors.NC}\n")
 
     # Scope selection
     print(f"{Colors.CYAN}Process all {len(DEEPIRI_REPOS)} repos? [Y/n/select]: {Colors.NC}", end="")
@@ -399,28 +270,12 @@ def main():
     # Process each repo
     results = []
     for i, repo_name in enumerate(selected, 1):
-        result = handle_repo(
-            repo_name=repo_name,
-            index=i,
-            total=len(selected),
-            bulk_head=bulk_head,
-            bulk_base=bulk_base,
-            bulk_title=bulk_title,
-            bulk_body=bulk_body,
-            draft=draft,
-            dry_run=dry_run,
-        )
+        result = handle_repo(repo_name=repo_name, index=i, total=len(selected), draft=draft, dry_run=dry_run)
         results.append(result)
-
-        if i < len(selected):
-            print(f"\n{Colors.GRAY}[Enter] Next repo  [q] Stop: {Colors.NC}", end="")
-            if input().strip().lower() == "q":
-                print(f"{Colors.YELLOW}Stopped early.{Colors.NC}")
-                break
 
     # Summary
     groups = {
-        "created": (Colors.GREEN, "Created"),
+        "created": (Colors.GREEN,  "Created"),
         "exists":  (Colors.YELLOW, "Already exists"),
         "dry_run": (Colors.YELLOW, "Dry-run"),
         "skipped": (Colors.YELLOW, "Skipped"),

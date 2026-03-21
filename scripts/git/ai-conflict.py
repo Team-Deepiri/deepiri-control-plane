@@ -499,23 +499,54 @@ def checkout_branch(repo_path: str, branch: str) -> bool:
 
 def get_conflicting_files_between_branches(repo_path: str, head_branch: str, base_branch: str) -> list[str]:
     """Get files that would actually conflict if merging head_branch into base_branch."""
+    def run(cmd):
+        return subprocess.run(cmd, cwd=repo_path, capture_output=True, text=True)
+
     try:
-        result = subprocess.run(
-            ["git", "merge-tree", "--write-tree", base_branch, head_branch],
-            cwd=repo_path,
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode == 0:
-            return []
+        result = run(["git", "merge-tree", "--write-tree", base_branch, head_branch])
 
         conflict_files = []
-        for line in (result.stderr + result.stdout).split("\n"):
-            m = re.search(r"CONFLICT.*:\s+Merge conflict in (.+)$", line)
-            if m:
-                f = m.group(1).strip()
-                if f not in conflict_files:
-                    conflict_files.append(f)
+        if result.returncode != 0:
+            for line in (result.stderr + result.stdout).split("\n"):
+                m = re.search(r"CONFLICT.*:\s+Merge conflict in (.+)$", line)
+                if m:
+                    f = m.group(1).strip()
+                    if f not in conflict_files:
+                        conflict_files.append(f)
+
+        # git merge-tree silently ignores submodule conflicts and returns exit 0.
+        # Detect them separately: find the merge base, then list submodule paths
+        # changed by both branches; those are guaranteed conflicts.
+        merge_base_result = run(["git", "merge-base", base_branch, head_branch])
+        if merge_base_result.returncode == 0:
+            merge_base = merge_base_result.stdout.strip()
+            if merge_base:
+                head_changed = set(
+                    run(["git", "diff", "--name-only", merge_base, head_branch]).stdout.strip().split("\n")
+                )
+                base_changed = set(
+                    run(["git", "diff", "--name-only", merge_base, base_branch]).stdout.strip().split("\n")
+                )
+                # Detect submodule paths via git diff --raw (mode 160000 = gitlink).
+                # This is more reliable than parsing .gitmodules.
+                def gitlink_paths(ref_a: str, ref_b: str) -> set:
+                    raw = run(["git", "diff", "--raw", ref_a, ref_b])
+                    paths: set = set()
+                    for line in raw.stdout.splitlines():
+                        # format: :<old_mode> <new_mode> <old_hash> <new_hash> <status>\t<path>
+                        parts = line.split("\t", 1)
+                        if len(parts) == 2:
+                            meta = parts[0].split()
+                            if len(meta) >= 2 and ("160000" in meta[0] or "160000" in meta[1]):
+                                paths.add(parts[1].strip())
+                    return paths
+
+                submodule_paths = gitlink_paths(merge_base, head_branch) | gitlink_paths(merge_base, base_branch)
+                submodule_conflicts = submodule_paths & head_changed & base_changed
+                for f in sorted(submodule_conflicts):
+                    if f not in conflict_files:
+                        conflict_files.append(f)
+
         return conflict_files
     except Exception:
         return []
@@ -1168,15 +1199,13 @@ async def handle_resolve_conflicts_between_branches(repo_path: str, repo_name: s
     print(Hints.RESOLVE)
     print(f"{Colors.CYAN}HEAD branch (incoming changes - has new code){Colors.NC}")
     print(f"{Colors.GRAY}  [Enter for current branch: {current_branch}]{Colors.NC}")
-    print(f"{Colors.CYAN}> {Colors.NC}", end="")
-    head_branch = input().strip()
+    head_branch = input(f"{Colors.CYAN}> {Colors.NC}").strip()
     if not head_branch:
         head_branch = current_branch
 
     print(f"\n{Colors.CYAN}BASE branch (target - typically main/develop){Colors.NC}")
     print(f"{Colors.GRAY}  [e.g., origin/main, origin/dev]{Colors.NC}")
-    print(f"{Colors.CYAN}> {Colors.NC}", end="")
-    base_branch = input().strip()
+    base_branch = input(f"{Colors.CYAN}> {Colors.NC}").strip()
 
     if not base_branch:
         return
