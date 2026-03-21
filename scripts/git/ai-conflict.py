@@ -497,53 +497,72 @@ def checkout_branch(repo_path: str, branch: str) -> bool:
         return False
 
 
-def get_conflicting_files_between_branches(repo_path: str, head_branch: str, base_branch: str) -> list[str]:
-    """Get files that would actually conflict if merging head_branch into base_branch."""
+def resolve_branch_ref(repo_path: str, branch: str) -> str:
+    """Resolve a branch name to a valid git ref, auto-prefixing origin/ if needed."""
+    result = subprocess.run(
+        ["git", "rev-parse", "--verify", branch],
+        cwd=repo_path, capture_output=True, text=True
+    )
+    if result.returncode == 0:
+        return branch
+    # Try origin/ prefix
+    remote_ref = f"origin/{branch}"
+    result2 = subprocess.run(
+        ["git", "rev-parse", "--verify", remote_ref],
+        cwd=repo_path, capture_output=True, text=True
+    )
+    if result2.returncode == 0:
+        return remote_ref
+    return branch  # return as-is and let git report the error
+
+
+def get_conflicting_files_between_branches(repo_path: str, head_branch: str, base_branch: str) -> list[str] | None:
+    """Get files that would actually conflict if merging head_branch into base_branch.
+    Returns None if the branch refs are invalid (can't be resolved).
+    Returns [] if branches merge cleanly.
+    """
     def run(cmd):
         return subprocess.run(cmd, cwd=repo_path, capture_output=True, text=True)
 
     try:
-        result = run(["git", "merge-tree", "--write-tree", base_branch, head_branch])
+        # Auto-resolve bare branch names to origin/<name> if they don't exist locally
+        head_branch = resolve_branch_ref(repo_path, head_branch)
+        base_branch = resolve_branch_ref(repo_path, base_branch)
+
+        # Verify both refs exist before proceeding
+        for ref in (head_branch, base_branch):
+            check = run(["git", "rev-parse", "--verify", ref])
+            if check.returncode != 0:
+                return None  # signal invalid ref to caller
 
         conflict_files = []
+
+        # --- Pass 1: git merge-tree for content conflicts ---
+        result = run(["git", "merge-tree", "--write-tree", base_branch, head_branch])
         if result.returncode != 0:
             for line in (result.stderr + result.stdout).split("\n"):
-                m = re.search(r"CONFLICT.*:\s+Merge conflict in (.+)$", line)
+                # Match "CONFLICT (type): Merge conflict in <path>" or "CONFLICT (type): <path> deleted/modified..."
+                # Use \S+ to capture only the path token, not the rest of the description.
+                m = re.search(r"CONFLICT[^:]*:\s+(?:Merge conflict in\s+)?(\S+)", line)
                 if m:
                     f = m.group(1).strip()
-                    if f not in conflict_files:
+                    if f and f not in conflict_files:
                         conflict_files.append(f)
 
-        # git merge-tree silently ignores submodule conflicts and returns exit 0.
-        # Detect them separately: find the merge base, then list submodule paths
-        # changed by both branches; those are guaranteed conflicts.
+        # --- Pass 2: intersection-based detection (catches submodules + any merge-tree misses) ---
+        # Any file changed in BOTH branches since their merge-base is a potential conflict.
         merge_base_result = run(["git", "merge-base", base_branch, head_branch])
         if merge_base_result.returncode == 0:
             merge_base = merge_base_result.stdout.strip()
             if merge_base:
-                head_changed = set(
+                head_changed = set(filter(None,
                     run(["git", "diff", "--name-only", merge_base, head_branch]).stdout.strip().split("\n")
-                )
-                base_changed = set(
+                ))
+                base_changed = set(filter(None,
                     run(["git", "diff", "--name-only", merge_base, base_branch]).stdout.strip().split("\n")
-                )
-                # Detect submodule paths via git diff --raw (mode 160000 = gitlink).
-                # This is more reliable than parsing .gitmodules.
-                def gitlink_paths(ref_a: str, ref_b: str) -> set:
-                    raw = run(["git", "diff", "--raw", ref_a, ref_b])
-                    paths: set = set()
-                    for line in raw.stdout.splitlines():
-                        # format: :<old_mode> <new_mode> <old_hash> <new_hash> <status>\t<path>
-                        parts = line.split("\t", 1)
-                        if len(parts) == 2:
-                            meta = parts[0].split()
-                            if len(meta) >= 2 and ("160000" in meta[0] or "160000" in meta[1]):
-                                paths.add(parts[1].strip())
-                    return paths
-
-                submodule_paths = gitlink_paths(merge_base, head_branch) | gitlink_paths(merge_base, base_branch)
-                submodule_conflicts = submodule_paths & head_changed & base_changed
-                for f in sorted(submodule_conflicts):
+                ))
+                # Files changed in both branches = potential conflict
+                for f in sorted(head_changed & base_changed):
                     if f not in conflict_files:
                         conflict_files.append(f)
 
@@ -699,23 +718,54 @@ def colorize_resolved(head_content: str, base_content: str, resolved_content: st
     return colored
 
 
-def review_and_decide(result: dict) -> str:
-    """Show explanation + colorized preview, handle [v]iew full. Returns 'y', 'a', 's', or 'e'."""
-    print(f"\n{Colors.CYAN}--- AI Explanation ---{Colors.NC}")
-    print(f"{Colors.GRAY}{result['explanation']}{Colors.NC}")
+def print_side_by_side_diff(head_content: str, base_content: str, head_label: str = "HEAD", base_label: str = "BASE"):
+    """Print a unified diff between head and base versions so you can see exactly what each branch has."""
+    head_lines = (head_content or "").splitlines(keepends=True)
+    base_lines = (base_content or "").splitlines(keepends=True)
+    diff = list(difflib.unified_diff(
+        base_lines, head_lines,
+        fromfile=f"BASE ({base_label})", tofile=f"HEAD ({head_label})",
+        lineterm="",
+    ))
+    if not diff:
+        print(f"  {Colors.GRAY}(files are identical){Colors.NC}")
+        return
+    for line in diff[:80]:
+        if line.startswith("+++") or line.startswith("---") or line.startswith("@@"):
+            print(f"{Colors.CYAN}{line}{Colors.NC}")
+        elif line.startswith("+"):
+            print(f"{Colors.GREEN}{line}{Colors.NC}")
+        elif line.startswith("-"):
+            print(f"{Colors.RED}{line}{Colors.NC}")
+        else:
+            print(f"{Colors.GRAY}{line}{Colors.NC}")
+    if len(diff) > 80:
+        print(f"{Colors.GRAY}... ({len(diff) - 80} more diff lines — use [d] to view all){Colors.NC}")
 
-    colored = colorize_resolved(
-        result.get("head", ""),
-        result.get("base_branch_version", ""),
-        result["content"],
-    )
+
+def review_and_decide(result: dict) -> str:
+    """Show raw diff + AI explanation + colorized preview. Returns 'y', 'a', 's', 'e', 'o', or 't'."""
+    head_content = result.get("head", "")
+    base_content = result.get("base_branch_version", "")
+
+    # Show the raw diff between the two branch versions first
+    print(f"\n{Colors.CYAN}--- Raw Diff (BASE vs HEAD) ---{Colors.NC}")
+    print_side_by_side_diff(head_content, base_content)
+
+    if result.get("explanation"):
+        print(f"\n{Colors.CYAN}--- AI Explanation ---{Colors.NC}")
+        print(f"{Colors.GRAY}{result['explanation']}{Colors.NC}")
+
+    colored = colorize_resolved(head_content, base_content, result["content"])
     legend = (
         f"{Colors.GRAY}("
         f"{Colors.BLUE}blue{Colors.GRAY}=HEAD kept  "
         f"{Colors.GREEN}green{Colors.GRAY}=BASE kept  "
         f"{Colors.CYAN}cyan{Colors.GRAY}=AI combined){Colors.NC}"
     )
-    print(f"\n{Colors.CYAN}--- Resolved Preview --- {legend}")
+    print(f"\n{Colors.CYAN}--- AI Resolved Preview --- {legend}")
+
+    full_diff = None  # lazy-load for [d]
 
     while True:
         for line in colored[:30]:
@@ -725,7 +775,10 @@ def review_and_decide(result: dict) -> str:
             print(f"{Colors.GRAY}... ({remaining} more lines){Colors.NC}")
 
         print(
-            f"\n{Colors.CYAN}[y] Accept  [v] View full  [e] Edit  [s] Skip  [a] Accept all remaining: {Colors.NC}",
+            f"\n{Colors.CYAN}"
+            f"[y] Accept AI  [o] Keep OURS (HEAD)  [t] Keep THEIRS (BASE)  "
+            f"[v] View full resolved  [d] View full diff  [e] Edit  [s] Skip  [a] Accept all: "
+            f"{Colors.NC}",
             end="",
         )
         decision = input().strip().lower()
@@ -734,6 +787,22 @@ def review_and_decide(result: dict) -> str:
             print(f"\n{Colors.CYAN}--- Full Resolved File ({len(colored)} lines) ---{Colors.NC}")
             for line in colored:
                 print(line)
+            print(f"{Colors.CYAN}--- End ---{Colors.NC}")
+        elif decision == "d":
+            if full_diff is None:
+                head_lines = (head_content or "").splitlines(keepends=True)
+                base_lines = (base_content or "").splitlines(keepends=True)
+                full_diff = list(difflib.unified_diff(base_lines, head_lines, fromfile="BASE", tofile="HEAD", lineterm=""))
+            print(f"\n{Colors.CYAN}--- Full Diff ---{Colors.NC}")
+            for line in full_diff:
+                if line.startswith("+++") or line.startswith("---") or line.startswith("@@"):
+                    print(f"{Colors.CYAN}{line}{Colors.NC}")
+                elif line.startswith("+"):
+                    print(f"{Colors.GREEN}{line}{Colors.NC}")
+                elif line.startswith("-"):
+                    print(f"{Colors.RED}{line}{Colors.NC}")
+                else:
+                    print(f"{Colors.GRAY}{line}{Colors.NC}")
             print(f"{Colors.CYAN}--- End ---{Colors.NC}")
         else:
             return decision
@@ -1217,6 +1286,11 @@ async def handle_resolve_conflicts_between_branches(repo_path: str, repo_name: s
 
     preview_conflicts = get_conflicting_files_between_branches(repo_path, head_branch, base_branch)
 
+    if preview_conflicts is None:
+        print(f"{Colors.RED}Could not resolve one or both branch names. Check spelling and try again.{Colors.NC}")
+        print(f"{Colors.GRAY}Tip: use 'origin/<branch>' for remote branches, e.g. origin/senay-add-messaging-route{Colors.NC}")
+        return
+
     if not preview_conflicts:
         print(f"{Colors.GREEN}No conflicts - these branches merge cleanly!{Colors.NC}")
         return
@@ -1345,9 +1419,19 @@ async def handle_resolve_conflicts_between_branches(repo_path: str, repo_name: s
             elif decision == "s":
                 skipped += 1
                 continue
+            elif decision == "o":
+                # Keep ours (HEAD branch version)
+                result["content"] = result.get("head", "")
+                print(f"  {Colors.BLUE}Using HEAD (ours): {file_path}{Colors.NC}")
+                decision = "y"
+            elif decision == "t":
+                # Keep theirs (BASE branch version)
+                result["content"] = result.get("base_branch_version", "")
+                print(f"  {Colors.GREEN}Using BASE (theirs): {file_path}{Colors.NC}")
+                decision = "y"
             elif decision == "e":
                 editor = os.getenv("EDITOR", "vim")
-                temp = file_path + ".tmp"
+                temp = full_path + ".review_tmp"
                 with open(temp, "w") as f:
                     f.write(result["content"])
                 subprocess.run([editor, temp])
