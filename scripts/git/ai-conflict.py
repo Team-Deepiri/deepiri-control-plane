@@ -498,77 +498,115 @@ def checkout_branch(repo_path: str, branch: str) -> bool:
 
 
 def resolve_branch_ref(repo_path: str, branch: str) -> str:
-    """Resolve a branch name to a valid git ref, auto-prefixing origin/ if needed."""
-    result = subprocess.run(
-        ["git", "rev-parse", "--verify", branch],
-        cwd=repo_path, capture_output=True, text=True
-    )
-    if result.returncode == 0:
-        return branch
-    # Try origin/ prefix
-    remote_ref = f"origin/{branch}"
-    result2 = subprocess.run(
-        ["git", "rev-parse", "--verify", remote_ref],
-        cwd=repo_path, capture_output=True, text=True
-    )
-    if result2.returncode == 0:
-        return remote_ref
-    return branch  # return as-is and let git report the error
-
-
-def get_conflicting_files_between_branches(repo_path: str, head_branch: str, base_branch: str) -> list[str] | None:
-    """Get files that would actually conflict if merging head_branch into base_branch.
-    Returns None if the branch refs are invalid (can't be resolved).
-    Returns [] if branches merge cleanly.
+    """Resolve a branch name to a valid git ref.
+    Always prefers origin/<branch> (remote tracking ref, fresh after fetch)
+    over a local branch that may be stale and behind.
     """
-    def run(cmd):
-        return subprocess.run(cmd, cwd=repo_path, capture_output=True, text=True)
+    def verify(ref):
+        return subprocess.run(
+            ["git", "rev-parse", "--verify", ref],
+            cwd=repo_path, capture_output=True, text=True
+        ).returncode == 0
 
+    # Already has a remote prefix — use as-is
+    if branch.startswith("origin/") or branch.startswith("remotes/"):
+        return branch
+
+    # Prefer remote tracking ref over a potentially stale local branch
+    remote_ref = f"origin/{branch}"
+    if verify(remote_ref):
+        return remote_ref
+
+    # Fall back to local branch / tag / SHA
+    if verify(branch):
+        return branch
+
+    return branch  # let git report the error downstream
+
+
+def get_conflicting_files_between_branches(repo_path: str, head_branch: str, base_branch: str) -> dict | None:
+    """Get files that would conflict merging head_branch into base_branch.
+    Uses an isolated worktree + real merge — same algorithm GitHub uses.
+
+    Returns None if refs are invalid.
+    Returns dict:
+      'true_conflicts'  – files git cannot auto-merge (need manual resolution)
+      'both_modified'   – files changed in both branches (git may auto-merge, but GitHub flags them)
+    """
+    def run(cmd, cwd=None):
+        return subprocess.run(cmd, cwd=cwd or repo_path, capture_output=True, text=True)
+
+    # Always prefer origin/ refs (fresh after fetch) over stale local branches
+    head_branch = resolve_branch_ref(repo_path, head_branch)
+    base_branch = resolve_branch_ref(repo_path, base_branch)
+
+    for ref in (head_branch, base_branch):
+        if run(["git", "rev-parse", "--verify", ref]).returncode != 0:
+            return None
+
+    tmpdir = tempfile.mkdtemp(prefix="ai-conflict-chk-")
     try:
-        # Auto-resolve bare branch names to origin/<name> if they don't exist locally
-        head_branch = resolve_branch_ref(repo_path, head_branch)
-        base_branch = resolve_branch_ref(repo_path, base_branch)
+        wt = run(["git", "worktree", "add", "--detach", tmpdir, head_branch])
+        if wt.returncode != 0:
+            return None
 
-        # Verify both refs exist before proceeding
-        for ref in (head_branch, base_branch):
-            check = run(["git", "rev-parse", "--verify", ref])
-            if check.returncode != 0:
-                return None  # signal invalid ref to caller
+        # Run the actual merge — capture its output which lists every CONFLICT line
+        merge_result = run(["git", "merge", "--no-commit", "--no-ff", base_branch], cwd=tmpdir)
 
-        conflict_files = []
+        true_conflicts = []
 
-        # --- Pass 1: git merge-tree for content conflicts ---
-        result = run(["git", "merge-tree", "--write-tree", base_branch, head_branch])
-        if result.returncode != 0:
-            for line in (result.stderr + result.stdout).split("\n"):
-                # Match "CONFLICT (type): Merge conflict in <path>" or "CONFLICT (type): <path> deleted/modified..."
-                # Use \S+ to capture only the path token, not the rest of the description.
-                m = re.search(r"CONFLICT[^:]*:\s+(?:Merge conflict in\s+)?(\S+)", line)
-                if m:
-                    f = m.group(1).strip()
-                    if f and f not in conflict_files:
-                        conflict_files.append(f)
+        # Source 1: parse CONFLICT lines directly from the merge output
+        for line in (merge_result.stdout + merge_result.stderr).splitlines():
+            m = re.search(r"CONFLICT[^:]*:\s+(?:Merge conflict in\s+)?(\S+)", line)
+            if m:
+                f = m.group(1).strip().strip('"')
+                if f and f not in true_conflicts:
+                    true_conflicts.append(f)
 
-        # --- Pass 2: intersection-based detection (catches submodules + any merge-tree misses) ---
-        # Any file changed in BOTH branches since their merge-base is a potential conflict.
-        merge_base_result = run(["git", "merge-base", base_branch, head_branch])
-        if merge_base_result.returncode == 0:
-            merge_base = merge_base_result.stdout.strip()
-            if merge_base:
+        # Source 2: git ls-files -u (unmerged index entries — catches all conflict types)
+        unmerged = run(["git", "ls-files", "-u"], cwd=tmpdir)
+        seen = set()
+        for line in unmerged.stdout.splitlines():
+            parts = line.split("\t", 1)
+            if len(parts) == 2:
+                f = parts[1].strip().strip('"')
+                if f and f not in seen:
+                    seen.add(f)
+                    if f not in true_conflicts:
+                        true_conflicts.append(f)
+
+        # Source 3: git status --short (belt-and-suspenders for any remaining types)
+        status = run(["git", "status", "--short"], cwd=tmpdir)
+        for line in status.stdout.splitlines():
+            if len(line) < 3:
+                continue
+            xy, path = line[:2], line[3:].strip().strip('"')
+            if ("U" in xy or xy in ("AA", "DD")) and path and path not in true_conflicts:
+                true_conflicts.append(path)
+
+        # Files modified in BOTH branches since merge-base (GitHub shows these even if auto-mergeable)
+        merge_base_r = run(["git", "merge-base", base_branch, head_branch])
+        both_modified = []
+        if merge_base_r.returncode == 0:
+            mb = merge_base_r.stdout.strip()
+            if mb:
                 head_changed = set(filter(None,
-                    run(["git", "diff", "--name-only", merge_base, head_branch]).stdout.strip().split("\n")
-                ))
+                    run(["git", "diff", "--name-only", mb, head_branch]).stdout.splitlines()))
                 base_changed = set(filter(None,
-                    run(["git", "diff", "--name-only", merge_base, base_branch]).stdout.strip().split("\n")
-                ))
-                # Files changed in both branches = potential conflict
+                    run(["git", "diff", "--name-only", mb, base_branch]).stdout.splitlines()))
                 for f in sorted(head_changed & base_changed):
-                    if f not in conflict_files:
-                        conflict_files.append(f)
+                    if f not in true_conflicts:
+                        both_modified.append(f)
 
-        return conflict_files
+        return {"true_conflicts": true_conflicts, "both_modified": both_modified}
+
     except Exception:
-        return []
+        return {"true_conflicts": [], "both_modified": []}
+
+    finally:
+        run(["git", "merge", "--abort"], cwd=tmpdir)
+        run(["git", "worktree", "remove", "--force", tmpdir])
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 def get_file_diff_between_branches(repo_path: str, branch1: str, branch2: str) -> dict:
@@ -1272,48 +1310,93 @@ async def handle_resolve_conflicts_between_branches(repo_path: str, repo_name: s
     if not head_branch:
         head_branch = current_branch
 
-    print(f"\n{Colors.CYAN}BASE branch (target - typically main/develop){Colors.NC}")
-    print(f"{Colors.GRAY}  [e.g., origin/main, origin/dev]{Colors.NC}")
-    base_branch = input(f"{Colors.CYAN}> {Colors.NC}").strip()
+    def get_sha(ref):
+        r = subprocess.run(["git", "rev-parse", "--short", ref], cwd=repo_path, capture_output=True, text=True)
+        return r.stdout.strip() if r.returncode == 0 else "unknown"
 
-    if not base_branch:
-        return
+    # BASE branch input with retry — bad names re-prompt instead of dropping to the main menu
+    base_branch = None
+    preview_conflicts = None
+    while True:
+        if base_branch is None:
+            print(f"\n{Colors.CYAN}BASE branch (target - typically main/develop){Colors.NC}")
+            print(f"{Colors.GRAY}  [e.g., origin/dev, origin/main  |  blank to cancel]{Colors.NC}")
+            val = input(f"{Colors.CYAN}> {Colors.NC}").strip()
+            if not val:
+                return
+            base_branch = val
 
-    print(f"\n{Colors.CYAN}Fetching latest remote info...{Colors.NC}")
-    fetch_all(repo_path)
+        # Fetch both branches specifically
+        print(f"\n{Colors.CYAN}Fetching latest remote refs...{Colors.NC}")
+        for ref in [head_branch, base_branch]:
+            branch_name = ref.replace("origin/", "")
+            r = subprocess.run(["git", "fetch", "origin", branch_name], cwd=repo_path, capture_output=True, text=True)
+            if r.returncode == 0:
+                print(f"  {Colors.GREEN}fetched{Colors.NC} origin/{branch_name}")
+            else:
+                print(f"  {Colors.YELLOW}could not fetch origin/{branch_name} — using local cache{Colors.NC}")
 
-    print(f"\n{Colors.CYAN}Checking for conflicts between {Colors.BLUE}{head_branch}{Colors.CYAN} and {Colors.GREEN}{base_branch}{Colors.CYAN}...{Colors.NC}")
+        resolved_head = f"origin/{head_branch.replace('origin/', '')}"
+        resolved_base = base_branch if base_branch.startswith("origin/") else f"origin/{base_branch}"
+        print(f"  {Colors.BLUE}{resolved_head}{Colors.NC} @ {Colors.GRAY}{get_sha(resolved_head)}{Colors.NC}")
+        print(f"  {Colors.GREEN}{base_branch}{Colors.NC} @ {Colors.GRAY}{get_sha(resolved_base)}{Colors.NC}")
 
-    preview_conflicts = get_conflicting_files_between_branches(repo_path, head_branch, base_branch)
+        print(f"\n{Colors.CYAN}Checking for conflicts between {Colors.BLUE}{head_branch}{Colors.CYAN} and {Colors.GREEN}{base_branch}{Colors.CYAN}...{Colors.NC}")
+        preview_conflicts = get_conflicting_files_between_branches(repo_path, head_branch, base_branch)
 
-    if preview_conflicts is None:
-        print(f"{Colors.RED}Could not resolve one or both branch names. Check spelling and try again.{Colors.NC}")
-        print(f"{Colors.GRAY}Tip: use 'origin/<branch>' for remote branches, e.g. origin/senay-add-messaging-route{Colors.NC}")
-        return
+        if preview_conflicts is None:
+            print(f"{Colors.RED}Branch '{base_branch}' not found. Try again (blank to cancel):{Colors.NC}")
+            base_branch = None
+            continue
 
-    if not preview_conflicts:
+        break
+
+    true_conflicts = preview_conflicts["true_conflicts"]
+    both_modified  = preview_conflicts["both_modified"]
+
+    if not true_conflicts and not both_modified:
         print(f"{Colors.GREEN}No conflicts - these branches merge cleanly!{Colors.NC}")
         return
 
-    print(f"\n{Colors.RED}{len(preview_conflicts)} file(s) would conflict:{Colors.NC}")
-    for f in preview_conflicts[:20]:
-        print(f"  {Colors.RED}!{Colors.NC} {f}")
-    if len(preview_conflicts) > 20:
-        print(f"  {Colors.GRAY}... and {len(preview_conflicts) - 20} more{Colors.NC}")
+    if true_conflicts:
+        print(f"\n{Colors.RED}{len(true_conflicts)} file(s) need manual resolution:{Colors.NC}")
+        for f in true_conflicts:
+            print(f"  {Colors.RED}x{Colors.NC} {f}")
+    else:
+        print(f"\n{Colors.GREEN}No hard conflicts - git can auto-merge everything.{Colors.NC}")
 
-    print(f"\n{Colors.CYAN}This will merge {base_branch} into {current_branch} with AI conflict resolution{Colors.NC}")
+    if both_modified:
+        print(f"\n{Colors.YELLOW}{len(both_modified)} file(s) changed in both branches (git auto-merges, but GitHub flags them):{Colors.NC}")
+        for f in both_modified:
+            print(f"  {Colors.YELLOW}~{Colors.NC} {f}")
+
+    print(f"\n{Colors.CYAN}This will merge {base_branch} into {head_branch} with AI conflict resolution{Colors.NC}")
     print(f"{Colors.CYAN}[y] Proceed  [n] Cancel: {Colors.NC}", end="")
     if input().strip().lower() != "y":
         print("Cancelled")
         return
-    
+
     has_changes = has_uncommitted_changes(repo_path)
     if has_changes:
         print(f"{Colors.YELLOW}Stashing uncommitted changes...{Colors.NC}")
         subprocess.run(["git", "stash"], cwd=repo_path, capture_output=True)
-    
 
-    print(f"{Colors.CYAN}Starting merge of {base_branch} into {current_branch}...{Colors.NC}")
+    # Checkout the head branch if we're not already on it
+    if head_branch != current_branch:
+        print(f"{Colors.CYAN}Checking out {head_branch}...{Colors.NC}")
+        co = subprocess.run(
+            ["git", "checkout", head_branch],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+        )
+        if co.returncode != 0:
+            print(f"{Colors.RED}Failed to checkout {head_branch}: {co.stderr.strip()}{Colors.NC}")
+            if has_changes:
+                subprocess.run(["git", "stash", "pop"], cwd=repo_path, capture_output=True)
+            return
+
+    print(f"{Colors.CYAN}Starting merge of {base_branch} into {head_branch}...{Colors.NC}")
     subprocess.run(
         ["git", "merge", "--no-commit", "--no-ff", base_branch],
         cwd=repo_path,
@@ -1473,13 +1556,13 @@ async def handle_resolve_conflicts_between_branches(repo_path: str, repo_name: s
                 
                 if action == "p":
                     result = subprocess.run(
-                        ["git", "push", "origin", current_branch],
+                        ["git", "push", "origin", head_branch],
                         cwd=repo_path,
                         capture_output=True,
                         text=True,
                     )
                     if result.returncode == 0:
-                        print(f"{Colors.GREEN}Pushed to origin/{current_branch}{Colors.NC}")
+                        print(f"{Colors.GREEN}Pushed to origin/{head_branch}{Colors.NC}")
                     else:
                         print(f"{Colors.RED}Push failed: {result.stderr}{Colors.NC}")
             else:
