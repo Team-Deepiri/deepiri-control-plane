@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import { secureLog } from '@deepiri/shared-utils';
 import routes from './index';
 import { connectDatabase } from './db';
+import { validateBodyIfPresent } from './middleware/inputValidation';
 
 dotenv.config();
 
@@ -13,7 +14,8 @@ const PORT: number = parseInt(process.env.PORT || '5002', 10);
 
 app.use(helmet());
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '100kb' }));
+app.use(validateBodyIfPresent());
 
 // PostgreSQL connection via Prisma
 connectDatabase()

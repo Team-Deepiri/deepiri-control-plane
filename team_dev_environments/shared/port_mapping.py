@@ -24,6 +24,7 @@ BASE_PORTS = {
     "external-bridge-service": 5006,
     "challenge-service": 5007,
     "realtime-gateway": 5008,
+    "messaging-service": 5009,
     "api-gateway": 5100,
     "frontend": 5173,
     "cyrex": 8000,
@@ -39,6 +40,7 @@ BASE_PORTS = {
     "milvus": 19530,
     "milvus-metrics": 9091,
     "etcd": 2379,
+    "deepiri-prismpipe": 5011,
 }
 
 # Special ports that should NOT be offset (shared infrastructure)
