@@ -438,6 +438,7 @@ def _check_submodule_dirty(repo_path: str, subpath: str) -> dict | None:
             if modified > 0 or untracked > 0:
                 return {"path": subpath, "full_path": full_path, "modified": modified, "untracked": untracked}
     except Exception:
+        # Best-effort check: if git status fails for this submodule, ignore it and treat as not dirty.
         pass
     return None
 
