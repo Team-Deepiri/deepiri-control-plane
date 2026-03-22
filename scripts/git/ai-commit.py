@@ -10,6 +10,8 @@ import os
 import re
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
 from typing import Optional
 
 try:
@@ -418,36 +420,48 @@ def parse_changed_files(diff_output: str) -> list[dict]:
     return files
 
 
+def _check_submodule_dirty(repo_path: str, subpath: str) -> dict | None:
+    full_path = os.path.join(repo_path, subpath)
+    if not os.path.isdir(full_path):
+        return None
+    if not os.path.isdir(os.path.join(full_path, ".git")) and not os.path.isfile(os.path.join(full_path, ".git")):
+        return None
+    try:
+        result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=full_path, capture_output=True, text=True,
+        )
+        if result.stdout.strip():
+            lines = result.stdout.strip().splitlines()
+            modified = sum(1 for l in lines if not l.startswith("??"))
+            untracked = sum(1 for l in lines if l.startswith("??"))
+            if modified > 0 or untracked > 0:
+                return {"path": subpath, "full_path": full_path, "modified": modified, "untracked": untracked}
+    except Exception:
+        pass
+    return None
+
+
 def get_dirty_submodules(repo_path: str, submodule_paths: list[str]) -> list[dict]:
-    """Return submodules that have uncommitted changes"""
-    dirty = []
-    for subpath in submodule_paths:
-        full_path = os.path.join(repo_path, subpath)
-        if not os.path.isdir(full_path):
-            continue
-        if not os.path.isdir(os.path.join(full_path, ".git")) and not os.path.isfile(os.path.join(full_path, ".git")):
-            continue
-        try:
-            result = subprocess.run(
-                ["git", "status", "--porcelain"],
-                cwd=full_path,
-                capture_output=True,
-                text=True,
-            )
-            if result.stdout.strip():
-                lines = result.stdout.strip().splitlines()
-                modified = sum(1 for l in lines if not l.startswith("??"))
-                untracked = sum(1 for l in lines if l.startswith("??"))
-                if modified > 0 or untracked > 0:
-                    dirty.append({
-                        "path": subpath,
-                        "full_path": full_path,
-                        "modified": modified,
-                        "untracked": untracked,
-                    })
-        except Exception:
-            pass
-    return dirty
+    """Return submodules that have uncommitted changes — checks all in parallel."""
+    if not submodule_paths:
+        return []
+    with ThreadPoolExecutor(max_workers=min(8, len(submodule_paths))) as pool:
+        results = pool.map(lambda sp: _check_submodule_dirty(repo_path, sp), submodule_paths)
+    return [r for r in results if r is not None]
+
+
+_http_client: Optional[httpx.AsyncClient] = None
+
+
+def _get_http_client() -> httpx.AsyncClient:
+    global _http_client
+    if _http_client is None or _http_client.is_closed:
+        _http_client = httpx.AsyncClient(
+            timeout=180.0,
+            limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
+        )
+    return _http_client
 
 
 async def send_to_ollama(base_url: str, model: str, prompt: str, system: str = "") -> str:
@@ -464,11 +478,11 @@ async def send_to_ollama(base_url: str, model: str, prompt: str, system: str = "
     }
 
     try:
-        async with httpx.AsyncClient(timeout=180.0) as client:
-            response = await client.post(f"{base_url}/api/chat", json=payload)
-            response.raise_for_status()
-            data = response.json()
-            return data["message"]["content"]
+        client = _get_http_client()
+        response = await client.post(f"{base_url}/api/chat", json=payload)
+        response.raise_for_status()
+        data = response.json()
+        return data["message"]["content"]
     except Exception as e:
         print(f"{Colors.RED}Error sending request to Ollama: {e}{Colors.NC}")
         sys.exit(1)
@@ -996,6 +1010,7 @@ def push_changes(repo_path: str) -> bool:
         return False
 
 
+@lru_cache(maxsize=64)
 def get_current_branch(repo_path: str) -> str:
     try:
         result = subprocess.run(
@@ -1123,6 +1138,7 @@ def get_prior_commits(repo_path: str, default_branch: str, new_commit_count: int
         return []
 
 
+@lru_cache(maxsize=64)
 def get_default_branch(repo_path: str) -> str:
     """Detect the repo's default branch (main/master/etc)"""
     try:
@@ -1173,11 +1189,11 @@ async def ensure_gh_ready() -> bool:
 async def get_ollama_models(base_url: str) -> list:
     """Get list of available models from Ollama"""
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(f"{base_url}/api/tags")
-            response.raise_for_status()
-            data = response.json()
-            return [m["name"] for m in data.get("models", [])]
+        client = _get_http_client()
+        response = await client.get(f"{base_url}/api/tags")
+        response.raise_for_status()
+        data = response.json()
+        return [m["name"] for m in data.get("models", [])]
     except Exception:
         return []
 
@@ -1269,21 +1285,25 @@ def has_changes(repo_path: str) -> bool:
 def get_repos_with_changes(repos: list[dict]) -> tuple[list[dict], list[dict], dict]:
     """
     Separate repos into: dirty_submodules, clean_repos, main_repo
-    Also returns a dict of dirty_submodule_paths for the main repo
+    Checks all repos for changes in parallel.
     """
+    if not repos:
+        return [], [], None, {}
+
+    with ThreadPoolExecutor(max_workers=min(8, len(repos))) as pool:
+        flags = list(pool.map(lambda r: has_changes(r["path"]), repos))
+
     dirty_submodules = []
     clean_repos = []
     main_repo = None
     dirty_submodule_paths = {}
 
-    for repo in repos:
-        path = repo["path"]
+    for repo, dirty in zip(repos, flags):
         is_submodule = repo.get("is_submodule", False)
-        
-        if has_changes(path):
+        if dirty:
             if is_submodule:
                 dirty_submodules.append(repo)
-                dirty_submodule_paths[repo["name"]] = path
+                dirty_submodule_paths[repo["name"]] = repo["path"]
             else:
                 main_repo = repo
         else:
