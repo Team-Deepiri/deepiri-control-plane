@@ -603,21 +603,30 @@ def get_conflicting_files_between_branches(repo_path: str, head_branch: str, bas
         shutil.rmtree(tmpdir, ignore_errors=True)
 
     # ── Method 3: deletion conflicts ──
-    # Deleted in head_branch but still present in base_branch.
-    # git silently resolves these by keeping the deletion, but GitHub requires
-    # explicit acknowledgement — so we flag them the same as hard conflicts.
+    # Two sub-cases:
+    #   a) MODIFY/DELETE: deleted in head_branch AND modified in base_branch since the merge-base.
+    #      This is a genuine conflict — one side deleted, the other made changes worth preserving.
+    #      These are usually already caught by methods 1 and 2, but we add them for completeness.
+    #   b) CLEAN DELETE: deleted in head_branch, base_branch has it unchanged from the merge-base.
+    #      Git auto-resolves silently. Not a conflict — tracked separately as deletion_warnings.
+    deletion_warnings: list[str] = []
     mb_r = run(["git", "merge-base", base_branch, head_branch])
     if mb_r.returncode == 0:
         mb = mb_r.stdout.strip()
         if mb:
             head_deleted = set(filter(None,
                 run(["git", "diff", "--name-only", "--diff-filter=D", mb, head_branch]).stdout.splitlines()))
-            for f in head_deleted:
-                if f not in conflicts:
-                    if run(["git", "cat-file", "-e", f"{base_branch}:{f}"]).returncode == 0:
-                        conflicts.add(f)
+            base_modified = set(filter(None,
+                run(["git", "diff", "--name-only", mb, base_branch]).stdout.splitlines()))
+            for f in sorted(head_deleted):
+                if run(["git", "cat-file", "-e", f"{base_branch}:{f}"]).returncode != 0:
+                    continue  # already gone in base too
+                if f in base_modified:
+                    conflicts.add(f)   # modify/delete → true conflict
+                elif f not in conflicts:
+                    deletion_warnings.append(f)   # clean delete → informational
 
-    return {"true_conflicts": sorted(conflicts)}
+    return {"true_conflicts": sorted(conflicts), "deletion_warnings": deletion_warnings}
 
 
 def get_file_diff_between_branches(repo_path: str, branch1: str, branch2: str) -> dict:
@@ -1362,15 +1371,24 @@ async def handle_resolve_conflicts_between_branches(repo_path: str, repo_name: s
 
         break
 
-    true_conflicts = preview_conflicts["true_conflicts"]
+    true_conflicts    = preview_conflicts["true_conflicts"]
+    deletion_warnings = preview_conflicts.get("deletion_warnings", [])
 
-    if not true_conflicts:
+    if not true_conflicts and not deletion_warnings:
         print(f"{Colors.GREEN}No conflicts - these branches merge cleanly!{Colors.NC}")
         return
 
-    print(f"\n{Colors.RED}{len(true_conflicts)} file(s) need conflict resolution:{Colors.NC}")
-    for f in true_conflicts:
-        print(f"  {Colors.RED}x{Colors.NC} {f}")
+    if true_conflicts:
+        print(f"\n{Colors.RED}{len(true_conflicts)} file(s) need conflict resolution:{Colors.NC}")
+        for f in true_conflicts:
+            print(f"  {Colors.RED}x{Colors.NC} {f}")
+    else:
+        print(f"\n{Colors.GREEN}No hard conflicts - git can auto-merge everything.{Colors.NC}")
+
+    if deletion_warnings:
+        print(f"\n{Colors.YELLOW}{len(deletion_warnings)} file(s) deleted in {head_branch} but still in {base_branch} (merge will remove them):{Colors.NC}")
+        for f in deletion_warnings:
+            print(f"  {Colors.YELLOW}-{Colors.NC} {f}")
 
     print(f"\n{Colors.CYAN}This will merge {base_branch} into {head_branch} with AI conflict resolution{Colors.NC}")
     print(f"{Colors.CYAN}[y] Proceed  [n] Cancel: {Colors.NC}", end="")
