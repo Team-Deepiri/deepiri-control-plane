@@ -525,18 +525,24 @@ def resolve_branch_ref(repo_path: str, branch: str) -> str:
 
 
 def get_conflicting_files_between_branches(repo_path: str, head_branch: str, base_branch: str) -> dict | None:
-    """Get files that would conflict merging head_branch into base_branch.
-    Uses an isolated worktree + real merge — same algorithm GitHub uses.
+    """Get files that would conflict merging base_branch into head_branch.
+
+    Uses two independent methods and unions the results:
+      1. git merge-tree --write-tree  (in-memory 3-way merge, git >= 2.38)
+         Parses unmerged index entries (stage 1/2/3) for true content/submodule conflicts.
+      2. Isolated worktree + git merge  (fallback and supplement)
+         Catches submodule conflicts that merge-tree can miss (e.g. diverged but fast-forwardable).
+      3. Deletion check  (independent of both)
+         Files deleted in head_branch but still present in base_branch — GitHub flags these
+         as conflicts because the merge would silently remove them from base.
 
     Returns None if refs are invalid.
     Returns dict:
-      'true_conflicts'  – files git cannot auto-merge (need manual resolution)
-      'both_modified'   – files changed in both branches (git may auto-merge, but GitHub flags them)
+      'true_conflicts' – sorted list of files needing resolution
     """
     def run(cmd, cwd=None):
         return subprocess.run(cmd, cwd=cwd or repo_path, capture_output=True, text=True)
 
-    # Always prefer origin/ refs (fresh after fetch) over stale local branches
     head_branch = resolve_branch_ref(repo_path, head_branch)
     base_branch = resolve_branch_ref(repo_path, base_branch)
 
@@ -544,69 +550,74 @@ def get_conflicting_files_between_branches(repo_path: str, head_branch: str, bas
         if run(["git", "rev-parse", "--verify", ref]).returncode != 0:
             return None
 
-    tmpdir = tempfile.mkdtemp(prefix="ai-conflict-chk-")
-    try:
-        wt = run(["git", "worktree", "add", "--detach", tmpdir, head_branch])
-        if wt.returncode != 0:
-            return None
+    conflicts: set[str] = set()
 
-        # Run the actual merge — capture its output which lists every CONFLICT line
-        merge_result = run(["git", "merge", "--no-commit", "--no-ff", base_branch], cwd=tmpdir)
-
-        true_conflicts = []
-
-        # Source 1: parse CONFLICT lines directly from the merge output
-        for line in (merge_result.stdout + merge_result.stderr).splitlines():
-            m = re.search(r"CONFLICT[^:]*:\s+(?:Merge conflict in\s+)?(\S+)", line)
-            if m:
-                f = m.group(1).strip().strip('"')
-                if f and f not in true_conflicts:
-                    true_conflicts.append(f)
-
-        # Source 2: git ls-files -u (unmerged index entries — catches all conflict types)
-        unmerged = run(["git", "ls-files", "-u"], cwd=tmpdir)
-        seen = set()
-        for line in unmerged.stdout.splitlines():
+    # ── Method 1: git merge-tree --write-tree (in-memory, no worktree needed) ──
+    # Unmerged index entries have the format:
+    #   <mode> <sha> <stage>\t<path>   where stage ∈ {1=ancestor, 2=ours, 3=theirs}
+    # Any path that appears at stage 1, 2, or 3 is a genuine conflict.
+    mt = run(["git", "merge-tree", "--write-tree", "--messages", head_branch, base_branch])
+    lines = (mt.stdout + mt.stderr).splitlines()
+    for line in lines:
+        # Index entries start with a 6-digit mode followed by a space
+        if len(line) > 7 and line[:6].isdigit() and line[6] == " ":
             parts = line.split("\t", 1)
             if len(parts) == 2:
-                f = parts[1].strip().strip('"')
-                if f and f not in seen:
-                    seen.add(f)
-                    if f not in true_conflicts:
-                        true_conflicts.append(f)
+                path = parts[1].strip().strip('"')
+                if path:
+                    conflicts.add(path)
+        # Also capture any CONFLICT lines from the messages section
+        m = re.search(r"CONFLICT[^:]*:\s+(?:Merge conflict in\s+)?(\S+)", line)
+        if m:
+            conflicts.add(m.group(1).strip().strip('"'))
 
-        # Source 3: git status --short (belt-and-suspenders for any remaining types)
-        status = run(["git", "status", "--short"], cwd=tmpdir)
-        for line in status.stdout.splitlines():
-            if len(line) < 3:
-                continue
-            xy, path = line[:2], line[3:].strip().strip('"')
-            if ("U" in xy or xy in ("AA", "DD")) and path and path not in true_conflicts:
-                true_conflicts.append(path)
+    # ── Method 2: worktree merge (supplements merge-tree for submodule edge cases) ──
+    tmpdir = tempfile.mkdtemp(prefix="ai-conflict-chk-")
+    try:
+        if run(["git", "worktree", "add", "--detach", tmpdir, head_branch]).returncode == 0:
+            merge_out = run(["git", "merge", "--no-commit", "--no-ff", base_branch], cwd=tmpdir)
 
-        # Files modified in BOTH branches since merge-base (GitHub shows these even if auto-mergeable)
-        merge_base_r = run(["git", "merge-base", base_branch, head_branch])
-        both_modified = []
-        if merge_base_r.returncode == 0:
-            mb = merge_base_r.stdout.strip()
-            if mb:
-                head_changed = set(filter(None,
-                    run(["git", "diff", "--name-only", mb, head_branch]).stdout.splitlines()))
-                base_changed = set(filter(None,
-                    run(["git", "diff", "--name-only", mb, base_branch]).stdout.splitlines()))
-                for f in sorted(head_changed & base_changed):
-                    if f not in true_conflicts:
-                        both_modified.append(f)
+            # CONFLICT lines from merge output
+            for line in (merge_out.stdout + merge_out.stderr).splitlines():
+                m = re.search(r"CONFLICT[^:]*:\s+(?:Merge conflict in\s+)?(\S+)", line)
+                if m:
+                    conflicts.add(m.group(1).strip().strip('"'))
 
-        return {"true_conflicts": true_conflicts, "both_modified": both_modified}
+            # Unmerged index entries from the worktree
+            for line in run(["git", "ls-files", "-u"], cwd=tmpdir).stdout.splitlines():
+                parts = line.split("\t", 1)
+                if len(parts) == 2:
+                    conflicts.add(parts[1].strip().strip('"'))
 
+            # git status UU/DU/UD/AA/DD entries
+            for line in run(["git", "status", "--short"], cwd=tmpdir).stdout.splitlines():
+                if len(line) >= 3:
+                    xy, path = line[:2], line[3:].strip().strip('"')
+                    if ("U" in xy or xy in ("AA", "DD")) and path:
+                        conflicts.add(path)
     except Exception:
-        return {"true_conflicts": [], "both_modified": []}
-
+        pass
     finally:
         run(["git", "merge", "--abort"], cwd=tmpdir)
         run(["git", "worktree", "remove", "--force", tmpdir])
         shutil.rmtree(tmpdir, ignore_errors=True)
+
+    # ── Method 3: deletion conflicts ──
+    # Deleted in head_branch but still present in base_branch.
+    # git silently resolves these by keeping the deletion, but GitHub requires
+    # explicit acknowledgement — so we flag them the same as hard conflicts.
+    mb_r = run(["git", "merge-base", base_branch, head_branch])
+    if mb_r.returncode == 0:
+        mb = mb_r.stdout.strip()
+        if mb:
+            head_deleted = set(filter(None,
+                run(["git", "diff", "--name-only", "--diff-filter=D", mb, head_branch]).stdout.splitlines()))
+            for f in head_deleted:
+                if f not in conflicts:
+                    if run(["git", "cat-file", "-e", f"{base_branch}:{f}"]).returncode == 0:
+                        conflicts.add(f)
+
+    return {"true_conflicts": sorted(conflicts)}
 
 
 def get_file_diff_between_branches(repo_path: str, branch1: str, branch2: str) -> dict:
@@ -1352,23 +1363,14 @@ async def handle_resolve_conflicts_between_branches(repo_path: str, repo_name: s
         break
 
     true_conflicts = preview_conflicts["true_conflicts"]
-    both_modified  = preview_conflicts["both_modified"]
 
-    if not true_conflicts and not both_modified:
+    if not true_conflicts:
         print(f"{Colors.GREEN}No conflicts - these branches merge cleanly!{Colors.NC}")
         return
 
-    if true_conflicts:
-        print(f"\n{Colors.RED}{len(true_conflicts)} file(s) need manual resolution:{Colors.NC}")
-        for f in true_conflicts:
-            print(f"  {Colors.RED}x{Colors.NC} {f}")
-    else:
-        print(f"\n{Colors.GREEN}No hard conflicts - git can auto-merge everything.{Colors.NC}")
-
-    if both_modified:
-        print(f"\n{Colors.YELLOW}{len(both_modified)} file(s) changed in both branches (git auto-merges, but GitHub flags them):{Colors.NC}")
-        for f in both_modified:
-            print(f"  {Colors.YELLOW}~{Colors.NC} {f}")
+    print(f"\n{Colors.RED}{len(true_conflicts)} file(s) need conflict resolution:{Colors.NC}")
+    for f in true_conflicts:
+        print(f"  {Colors.RED}x{Colors.NC} {f}")
 
     print(f"\n{Colors.CYAN}This will merge {base_branch} into {head_branch} with AI conflict resolution{Colors.NC}")
     print(f"{Colors.CYAN}[y] Proceed  [n] Cancel: {Colors.NC}", end="")
