@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import shutil
+from functools import lru_cache
 from typing import Optional
 
 import difflib
@@ -27,6 +28,7 @@ try:
 except ImportError:
     print("Error: httpx library required. Install with: pip install httpx")
     sys.exit(1)
+
 
 
 class Colors:
@@ -713,6 +715,7 @@ def get_branch_file_content(repo_path: str, branch: str, file_path: str) -> str:
     return ""
 
 
+@lru_cache(maxsize=64)
 def get_merge_base(repo_path: str, branch1: str, branch2: str) -> str:
     try:
         result = subprocess.run(
@@ -866,6 +869,19 @@ def review_and_decide(result: dict) -> str:
             return decision
 
 
+_http_client: Optional[httpx.AsyncClient] = None
+
+
+def _get_http_client() -> httpx.AsyncClient:
+    global _http_client
+    if _http_client is None or _http_client.is_closed:
+        _http_client = httpx.AsyncClient(
+            timeout=180.0,
+            limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
+        )
+    return _http_client
+
+
 async def send_to_ollama(base_url: str, model: str, prompt: str, system: str = "", silent: bool = False) -> str:
     messages = []
     if system:
@@ -889,20 +905,20 @@ async def send_to_ollama(base_url: str, model: str, prompt: str, system: str = "
         if not silent:
             print(f"{Colors.GRAY}Resolving...{Colors.NC}")
         tokens: list[str] = []
-        async with httpx.AsyncClient(timeout=180.0) as client:
-            async with client.stream("POST", f"{base_url}/api/chat", json=payload) as response:
-                response.raise_for_status()
-                async for line in response.aiter_lines():
-                    if not line:
-                        continue
-                    chunk = json.loads(line)
-                    token = chunk.get("message", {}).get("content", "")
-                    if token:
-                        if not silent:
-                            print(token, end="", flush=True)
-                        tokens.append(token)
-                    if chunk.get("done"):
-                        break
+        client = _get_http_client()
+        async with client.stream("POST", f"{base_url}/api/chat", json=payload) as response:
+            response.raise_for_status()
+            async for line in response.aiter_lines():
+                if not line:
+                    continue
+                chunk = json.loads(line)
+                token = chunk.get("message", {}).get("content", "")
+                if token:
+                    if not silent:
+                        print(token, end="", flush=True)
+                    tokens.append(token)
+                if chunk.get("done"):
+                    break
         if not silent:
             print()
         return "".join(tokens)
@@ -913,13 +929,99 @@ async def send_to_ollama(base_url: str, model: str, prompt: str, system: str = "
 
 async def get_ollama_models(base_url: str) -> list:
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(f"{base_url}/api/tags")
-            response.raise_for_status()
-            data = response.json()
-            return [m["name"] for m in data.get("models", [])]
+        client = _get_http_client()
+        response = await client.get(f"{base_url}/api/tags")
+        response.raise_for_status()
+        data = response.json()
+        return [m["name"] for m in data.get("models", [])]
     except Exception:
         return []
+
+
+def _build_file_context(file_path: str) -> str:
+    """Return a natural-language description of what this file is and how to treat it when merging."""
+    basename = os.path.basename(file_path)
+    ext = os.path.splitext(file_path)[1].lower()
+
+    # Lockfiles — machine-generated, never hand-merge
+    if basename in ("package-lock.json", "yarn.lock", "pnpm-lock.yaml",
+                    "poetry.lock", "Pipfile.lock", "Cargo.lock", "composer.lock",
+                    "Gemfile.lock", "go.sum"):
+        return (
+            f"{basename} is a machine-generated lockfile. "
+            "NEVER merge lockfile content manually — it will corrupt the dependency graph. "
+            "Output ONLY the incoming (base_branch) version exactly as-is. "
+            "The lockfile will be regenerated correctly after the manifest is merged."
+        )
+
+    # Dependency manifests
+    if basename in ("package.json", "pyproject.toml", "requirements.txt",
+                    "Cargo.toml", "go.mod", "composer.json", "Gemfile",
+                    "build.gradle", "pom.xml", "*.csproj"):
+        return (
+            f"{basename} is a dependency manifest. "
+            "Apply your knowledge of this format's schema and version resolution rules. "
+            "Include dependencies and scripts from BOTH branches; resolve version conflicts "
+            "by keeping the higher compatible version. Output must be valid and parseable."
+        )
+
+    # Git config files
+    if basename == ".gitmodules" or basename == ".gitattributes":
+        return (
+            f"{basename} is a Git configuration file. "
+            "Merge all entries from both branches. "
+            "For submodule refs, prefer the incoming branch's pointer. "
+            "Output must be a valid Git config format."
+        )
+
+    # CI / infrastructure as code
+    if basename in ("Dockerfile", "docker-compose.yml", "docker-compose.yaml"):
+        return (
+            f"{basename} is a container configuration file. "
+            "Apply your knowledge of Docker/Compose syntax. "
+            "Merge environment variables, ports, volumes, and services from both branches. "
+            "Output must be valid Dockerfile or Compose YAML."
+        )
+    if ext in (".tf", ".tfvars"):
+        return (
+            f"{basename} is a Terraform infrastructure file. "
+            "Merge resource blocks and variable definitions from both branches. "
+            "Preserve all resource arguments; never silently drop attributes. "
+            "Output must be valid HCL."
+        )
+
+    # Generic dispatch by extension — tell Ollama the file type and trust its knowledge
+    ext_descriptions = {
+        ".ts": "TypeScript", ".tsx": "TypeScript React", ".js": "JavaScript",
+        ".jsx": "JavaScript React", ".mjs": "ES Module JavaScript",
+        ".py": "Python", ".rb": "Ruby", ".go": "Go", ".rs": "Rust",
+        ".java": "Java", ".kt": "Kotlin", ".cs": "C#", ".cpp": "C++", ".c": "C",
+        ".swift": "Swift", ".php": "PHP", ".scala": "Scala",
+        ".yaml": "YAML", ".yml": "YAML",
+        ".json": "JSON", ".jsonc": "JSON with Comments",
+        ".toml": "TOML", ".ini": "INI config", ".env": "environment variables file",
+        ".md": "Markdown", ".mdx": "MDX",
+        ".sh": "shell script", ".bash": "Bash script", ".zsh": "Zsh script",
+        ".sql": "SQL", ".graphql": "GraphQL schema", ".proto": "Protocol Buffers",
+        ".xml": "XML", ".html": "HTML", ".css": "CSS", ".scss": "SCSS", ".sass": "Sass",
+        ".prisma": "Prisma schema",
+    }
+    lang = ext_descriptions.get(ext)
+    if lang:
+        return (
+            f"{basename} is a {lang} file. "
+            f"Apply your expert knowledge of {lang} syntax, semantics, and best practices. "
+            "Keep all imports, exports, type definitions, and functionality from both branches. "
+            f"Output must be syntactically valid {lang} with no merge artifacts."
+        )
+
+    # Unknown — still tell Ollama the filename so it can infer
+    return (
+        f"{basename} is a {'configuration' if '.' not in basename or ext == '' else ext[1:].upper()} file. "
+        "Apply your knowledge of this file format's structure and conventions. "
+        "Keep all meaningful content from both branches. "
+        "Output must be correctly formatted with no conflict markers."
+    )
 
 
 async def resolve_file_with_context(
@@ -932,78 +1034,62 @@ async def resolve_file_with_context(
     explanation_mode: bool = False,
     silent: bool = False,
 ) -> dict:
-    merge_base = get_merge_base(repo_path, head_branch, base_branch)
-    
-    base_content = get_branch_file_content(repo_path, merge_base, file_path) if merge_base else ""
-    head_content = get_branch_file_content(repo_path, head_branch, file_path)
-    base_head_content = get_branch_file_content(repo_path, base_branch, file_path)
-    
-    diff_hunks = get_file_diff_hunks(repo_path, base_branch, head_branch, file_path)
-    
+    _LOCKFILES = frozenset({
+        "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
+        "poetry.lock", "Pipfile.lock", "Cargo.lock", "composer.lock",
+        "Gemfile.lock", "go.sum",
+    })
+    _MAX_CONTENT_LINES = 300  # beyond this, send only the diff to keep prompt lean
 
-    ext = os.path.splitext(file_path)[1].lower()
-    basename = os.path.basename(file_path)
+    # Parallelise all independent git calls — none of head/base_branch/diff depend on merge_base
+    head_task        = asyncio.to_thread(get_branch_file_content, repo_path, head_branch, file_path)
+    base_branch_task = asyncio.to_thread(get_branch_file_content, repo_path, base_branch, file_path)
+    diff_task        = asyncio.to_thread(get_file_diff_hunks, repo_path, base_branch, head_branch, file_path)
+    merge_base_task  = asyncio.to_thread(get_merge_base, repo_path, head_branch, base_branch)
 
-    if basename in ("package-lock.json", "yarn.lock", "pnpm-lock.yaml", "poetry.lock", "Pipfile.lock", "Cargo.lock"):
-        file_rules = """LOCKFILE RULES (STRICT):
-- Lockfiles are auto-generated — NEVER attempt a manual content merge
-- Output ONLY the INCOMING (base_branch) version unchanged
-- The correct lockfile will be regenerated from the merged package manifest
-- Do NOT mix entries from both sides — this produces a corrupt lockfile"""
-    elif basename in ("package.json", "pyproject.toml", "requirements.txt", "Cargo.toml", "go.mod"):
-        file_rules = """DEPENDENCY MANIFEST RULES:
-- Prefer the most recent compatible version when both branches change the same dependency
-- Do NOT mix incompatible major versions
-- If both branches add different dependencies, include BOTH unless they conflict
-- Preserve all scripts, fields, and metadata from both branches
-- Do not drop devDependencies or peerDependencies from either side"""
-    elif basename == ".gitmodules" or ext == "" and "submodule" in file_path.lower():
-        file_rules = """SUBMODULE RULES:
-- Prefer the pointer from INCOMING (base_branch) for all submodule refs
-- Never attempt to merge submodule contents — only resolve the pointer
-- Ensure the result is a valid .gitmodules or submodule pointer"""
-    elif ext in (".ts", ".tsx", ".js", ".jsx", ".mjs"):
-        file_rules = """TYPESCRIPT/JAVASCRIPT RULES:
-- Keep imports from BOTH branches; deduplicate exact duplicates
-- If both branches add to the same function, combine the additions
-- Prefer INCOMING security/validation additions (helmet, validators, sanitizers)
-- Never remove error handling, logging, or middleware registrations
-- Output must be syntactically valid TypeScript/JavaScript"""
-    elif ext == ".py":
-        file_rules = """PYTHON RULES:
-- Keep imports from BOTH branches; use the most specific import path
-- If both modify the same function, combine changes preserving all behavior
-- Preserve type hints, docstrings, and logging calls
-- Output must be syntactically valid Python"""
-    elif ext in (".yaml", ".yml"):
-        file_rules = """YAML RULES:
-- Preserve all keys from both branches unless directly conflicting
-- For lists (e.g. env vars, volumes), merge the lists — do not drop entries
-- Maintain consistent indentation
-- Output must be valid YAML"""
-    elif ext in (".json",):
-        file_rules = """JSON RULES:
-- Merge all keys from both branches
-- For conflicting scalar values, prefer INCOMING unless HEAD is clearly more specific
-- Output must be valid JSON with no trailing commas"""
-    else:
-        file_rules = """GENERAL RULES:
-- Keep changes from BOTH branches when they touch different areas
-- For direct conflicts, prefer the more complete/correct implementation
-- Preserve comments, logging, and error handling from both sides"""
+    head_content, base_head_content, diff_hunks, merge_base = await asyncio.gather(
+        head_task, base_branch_task, diff_task, merge_base_task
+    )
 
-    system_prompt = f"""You are a senior systems engineer specializing in Git, dependency management, and large-scale monorepos.
-Resolve the merge conflict below to produce a correct, production-ready result.
+    # base_content depends on merge_base — fetch now that we have it
+    base_content = await asyncio.to_thread(
+        get_branch_file_content, repo_path, merge_base, file_path
+    ) if merge_base else ""
 
-BASE = common ancestor, HEAD = current branch, INCOMING = target branch (dev/main).
+    # Short-circuit: lockfiles are machine-generated — always take incoming version, no LLM needed
+    if os.path.basename(file_path) in _LOCKFILES:
+        return {
+            "content": base_head_content,
+            "explanation": "Lockfile: took the incoming branch version unchanged (never hand-merge lockfiles).",
+            "base": base_content,
+            "head": head_content,
+            "base_branch_version": base_head_content,
+            "diff_hunks": diff_hunks,
+        }
 
-UNIVERSAL RULES:
-- Use BASE to understand intent, not just differences
-- Never drop functionality unless clearly obsolete
-- No conflict markers, no commentary, no markdown in output
-- Output ONLY the final merged file content
+    # Trim oversized files: send only the diff when a version exceeds the line limit
+    def _maybe_trim(text: str, label: str) -> str:
+        lines = text.splitlines()
+        if len(lines) <= _MAX_CONTENT_LINES:
+            return text
+        return f"(file is {len(lines)} lines — omitted to keep prompt lean, see CHANGES SUMMARY below)"
 
-{file_rules}
+    file_context = _build_file_context(file_path)
+
+    system_prompt = f"""You are a senior systems engineer resolving a Git merge conflict.
+
+FILE CONTEXT: {file_context}
+
+BASE = common ancestor (how the file looked before both branches diverged).
+HEAD = current branch (incoming changes being merged in).
+INCOMING = target branch (where we're merging into).
+
+RULES:
+- Output ONLY the final merged file content — no commentary, no conflict markers, no markdown fences
+- Use BASE to understand the original intent; do not just pick one side blindly
+- Preserve all functionality, imports, error handling, and configuration from both branches
+- Apply the file format's validity constraints (syntax, schema, structure)
+- Never drop code unless it is genuinely superseded by the other branch
 {"" if not explanation_mode else chr(10) + "After the file content, append <<<EXPLANATION>>> on its own line, then 2-3 sentences explaining the resolution."}"""
 
     user_prompt = f"""Resolve a merge conflict between two branches.
@@ -1016,21 +1102,21 @@ BRANCH INFO:
 
 BASE VERSION (common ancestor - how the file started):
 ```
-{base_content or "(file did not exist in base)"}
+{_maybe_trim(base_content, "BASE") if base_content else "(file did not exist in base)"}
 ```
 
 BASE_BRANCH VERSION ({base_branch}):
 ```
-{base_head_content or "(file does not exist in this branch)"}
+{_maybe_trim(base_head_content, "BASE_BRANCH") if base_head_content else "(file does not exist in this branch)"}
 ```
 
 HEAD_BRANCH VERSION ({head_branch} - incoming changes):
 ```
-{head_content or "(file does not exist in this branch)"}
+{_maybe_trim(head_content, "HEAD") if head_content else "(file does not exist in this branch)"}
 ```
 
 CHANGES SUMMARY (diff between base and head):
-{diff_hunks[:3000] if diff_hunks else "(no hunks)"}
+{diff_hunks[:4000] if diff_hunks else "(no hunks)"}
 
 Resolve this conflict and output ONLY the final merged file content."""
 
