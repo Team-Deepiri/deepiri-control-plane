@@ -465,7 +465,7 @@ def _get_http_client() -> httpx.AsyncClient:
 
 
 async def send_to_ollama(base_url: str, model: str, prompt: str, system: str = "") -> str:
-    """Send prompt to Ollama and get response"""
+    """Send prompt to Ollama and return the full response (streamed internally for lower latency)."""
     messages = []
     if system:
         messages.append({"role": "system", "content": system})
@@ -474,56 +474,66 @@ async def send_to_ollama(base_url: str, model: str, prompt: str, system: str = "
     payload = {
         "model": model,
         "messages": messages,
-        "stream": False,
+        "stream": True,
     }
 
     try:
         client = _get_http_client()
-        response = await client.post(f"{base_url}/api/chat", json=payload)
-        response.raise_for_status()
-        data = response.json()
-        return data["message"]["content"]
+        tokens: list[str] = []
+        async with client.stream("POST", f"{base_url}/api/chat", json=payload) as response:
+            response.raise_for_status()
+            async for line in response.aiter_lines():
+                if not line:
+                    continue
+                chunk = json.loads(line)
+                token = chunk.get("message", {}).get("content", "")
+                if token:
+                    tokens.append(token)
+                if chunk.get("done"):
+                    break
+        return "".join(tokens)
     except Exception as e:
         print(f"{Colors.RED}Error sending request to Ollama: {e}{Colors.NC}")
         sys.exit(1)
 
 
-async def analyze_and_segment_commits(
+async def analyze_and_generate_commits(
     base_url: str,
     model: str,
     repo_name: str,
     diff_output: str,
     files: list[dict],
 ) -> list[dict]:
-    """Send diff to Ollama and get structured commit plan"""
+    """Single Ollama call: segment files into commits AND write subject+body for each."""
 
-    system_prompt = """Group the given file paths into logical git commits. Return ONLY raw JSON, no markdown, no explanation.
+    system_prompt = """You are a git commit assistant. Given changed files and their diff, group them into logical commits and write a specific commit message for each group.
 
-Use EXACTLY this schema:
-{"commits":[{"description":"verb-first subject max 70 chars","files":["path/a.py","path/b.py"]}]}
+Return ONLY raw JSON, no markdown, no explanation. Schema:
+{"commits":[{"subject":"<verb-first, ≤100 chars, name real classes/methods/configs>","body":"- <thing>: what changed\n- <thing>: what changed","files":["path/a.py"]}]}
 
-Example input:
-Dockerfile
-app/core/engine.py
-app/core/registry.py
-app/api/routes.py
-docs/README.md
+Grouping rules:
+- Every file must appear in exactly one commit
+- Dockerfile/CI config = own commit; docs/ = own commit
+- Group files in the same directory serving the same purpose
+- 6+ files must produce 3+ commits
 
-Example output:
-{"commits":[{"description":"Update Dockerfile base image","files":["Dockerfile"]},{"description":"Refactor core engine and registry","files":["app/core/engine.py","app/core/registry.py"]},{"description":"Add API routes","files":["app/api/routes.py"]},{"description":"Update README docs","files":["docs/README.md"]}]}
+Subject rules:
+- Name the actual class, method, function, or config key that changed
+- Start with a verb: Add, Fix, Refactor, Remove, Implement, Enforce, Extract
+- No conventional commit prefix (no "feat:", "fix:", etc.)
+- Bad: "Refactors rate limiter" — Good: "Add RateLimitMiddleware with Redis token-bucket"
 
-Rules:
-- Every file in the input must appear in exactly one commit
-- Dockerfile/config = own commit
-- docs/ = own commit
-- Group only files in the same directory that serve the same purpose
-- 6+ input files must produce 3+ commits"""
+Body rules:
+- 2-4 bullet points, each naming an exact method/class/field and what changed
+- Omit body if change is trivially obvious from the subject"""
 
-    files_summary = "\n".join([f["file"] for f in files])
-
-    prompt = f"""Group these {len(files)} changed files from repo "{repo_name}" into logical commits:
-
+    files_summary = "\n".join(f["file"] for f in files)
+    prompt = f"""Repo: {repo_name}
+Files changed ({len(files)}):
 {files_summary}
+
+Diff:
+{diff_output or "(no diff)"}
 
 Output only JSON."""
 
@@ -555,9 +565,10 @@ Output only JSON."""
                     actual_files = [f for f in raw_files if f in valid_paths]
                     if actual_files:
                         normalised.append({
-                            "description": c.get("description") or c.get("commit_message") or "Update files",
+                            "description": c.get("subject") or c.get("description") or c.get("commit_message") or "Update files",
+                            "subject": c.get("subject") or c.get("description") or c.get("commit_message") or "Update files",
+                            "body": c.get("body") or c.get("reasoning") or "",
                             "files": actual_files,
-                            "reasoning": c.get("reasoning", ""),
                         })
                 if normalised:
                     if debug:
@@ -571,75 +582,7 @@ Output only JSON."""
     print(f"{Colors.YELLOW}Tip: set AI_COMMIT_DEBUG=1 to see raw model output.{Colors.NC}")
 
     file_list = [f["file"] for f in files]
-    return [{"description": f"Update {len(file_list)} files", "files": file_list, "reasoning": "Fallback: model parse failed"}]
-
-
-async def generate_commit_message(
-    base_url: str,
-    model: str,
-    commit_description: str,
-    files: list[str],
-    diff_snippet: str = "",
-) -> tuple[str, str]:
-    """Generate detailed commit message"""
-
-    system_prompt = """You are writing a git commit message. Read the diff carefully and describe EXACTLY what changed.
-
-BAD subject (too vague): "Refactors rate limiter middleware"
-GOOD subject (specific): "Add RateLimitMiddleware with Redis token-bucket and X-Forwarded-For IP support"
-
-BAD subject (too vague): "Updates execution engine for rate limiting"
-GOOD subject (specific): "Enforce rate limits in ToolRegistry.execute_tool before task dispatch"
-
-Rules:
-- Name the actual class, method, function, or config key that changed
-- Mention the mechanism if relevant (token bucket, Redis, async, etc.)
-- Start with a verb: Adds, Fixes, Refactors, Removes, Implements, Extracts, Enforces, etc.
-- Max 100 characters
-- No conventional commit prefix
-
-Output ONLY this format:
-
-COMMIT_SUBJECT:
-<specific subject naming real things from the diff>
-
-COMMIT_BODY:
-- <exact method/class/field name>: what changed and why
-- <exact method/class/field name>: what changed and why
-- <exact method/class/field name>: what changed and why"""
-
-    diff_context = f"\n\nDiff:\n{diff_snippet[:10000]}" if diff_snippet else ""
-    user_prompt = f"""Files: {', '.join(files[:10])}{'...' if len(files) > 10 else ''}{diff_context}"""
-
-    response = await send_to_ollama(base_url, model, user_prompt, system=system_prompt)
-
-    subject = ""
-    body = ""
-
-    lines = response.split("\n")
-    current_section = None
-
-    for line in lines:
-        line = line.strip()
-        if line == "COMMIT_SUBJECT:":
-            current_section = "subject"
-            continue
-        elif line == "COMMIT_BODY:":
-            current_section = "body"
-            continue
-
-        if current_section == "subject":
-            subject += line + " "
-        elif current_section == "body":
-            body += line + " "
-
-    subject = subject.strip()[:100]
-    body = body.strip()
-
-    if not subject:
-        subject = commit_description[:70]
-
-    return subject, body
+    return [{"description": f"Update {len(file_list)} files", "subject": f"Update {len(file_list)} files", "body": "", "files": file_list}]
 
 
 DEEPIRI_PR_TEMPLATE = """## IMPORTANT
@@ -1534,35 +1477,20 @@ async def main():
         total_files = len(files)
         print(f"  {Colors.CYAN}●{Colors.NC} {total_files} file(s) to commit\n")
 
-        async with Spinner(f"Segmenting {total_files} files into commits...") as spinner:
-            commit_plan = await analyze_and_segment_commits(
+        async with Spinner(f"Analysing {total_files} file(s)...") as spinner:
+            commit_plan = await analyze_and_generate_commits(
                 base_url=ollama_url,
                 model=model,
                 repo_name=repo_name,
                 diff_output=diff_output,
                 files=files,
             )
-        print(f"  {Colors.GREEN}✔{Colors.NC} Segmented into {len(commit_plan)} commit(s)")
+        print(f"  {Colors.GREEN}✔{Colors.NC} Segmented into {len(commit_plan)} commit(s) with messages\n")
 
-        generated = []
-        total = len(commit_plan)
-        async with Spinner(f"[0/{total}] Generating commit messages...") as spinner:
-            for i, commit in enumerate(commit_plan):
-                files_to_commit = commit.get("files", [])
-                spinner.update(f"[{i}/{total}] {', '.join(files_to_commit[:2])}{'...' if len(files_to_commit) > 2 else ''}")
-                if not files_to_commit:
-                    generated.append((commit, "", ""))
-                    continue
-                diff_snippet = extract_diff_for_files(diff_output, files_to_commit, untracked_diffs, submodule_pointers)
-                subject, body = await generate_commit_message(
-                    base_url=ollama_url,
-                    model=model,
-                    commit_description=commit.get("description", "Update"),
-                    files=files_to_commit,
-                    diff_snippet=diff_snippet,
-                )
-                generated.append((commit, subject, body))
-        print(f"  {Colors.GREEN}✔{Colors.NC} Messages generated\n")
+        generated = [
+            (commit, commit.get("subject") or commit.get("description", "Update"), commit.get("body", ""))
+            for commit in commit_plan
+        ]
 
         print(f"{Colors.BOLD}{Colors.GREEN}Segmented into {len(generated)} commit(s):{Colors.NC}")
         for i, (commit, subject, _) in enumerate(generated):
@@ -1687,23 +1615,40 @@ async def main():
                     gh_ready = await ensure_gh_ready()
                     if gh_ready:
                         if current_branch and current_branch != base_branch:
-                            try:
-                                result = subprocess.run(
-                                    ["gh", "pr", "create",
-                                     "--title", pr_title,
-                                     "--body", pr_desc,
-                                     "--base", base_branch,
-                                     "--head", current_branch],
-                                    cwd=repo_path,
-                                    capture_output=True,
-                                    text=True,
-                                )
-                                if result.returncode == 0:
-                                    print(f"  {Colors.GREEN}✓ PR created: {result.stdout.strip()}{Colors.NC}")
-                                else:
-                                    print(f"  {Colors.RED}✗ Failed: {result.stderr.strip()}{Colors.NC}")
-                            except FileNotFoundError:
-                                print(f"{Colors.RED}gh not found{Colors.NC}")
+                            existing_pr = get_existing_pr_for_branch(repo_path, current_branch)
+                            if existing_pr:
+                                print(f"  {Colors.YELLOW}Found existing PR: #{existing_pr['number']} — {existing_pr['title']}{Colors.NC}")
+                                print(f"  {Colors.CYAN}URL:{Colors.NC} {existing_pr['url']}")
+                                print(f"\n{Colors.BLUE}[c] Comment on existing PR  [n] Create new PR  [s] Skip: {Colors.NC}", end="")
+                                pr_action = input().strip().lower()
+                                if pr_action == "c":
+                                    commit_list = "\n".join([f"- {c['subject']}" for c in commits])
+                                    comment = f"## New commits pushed\n\n{commit_list}\n\n---\n*Auto-generated by ai-commit.py*"
+                                    if comment_on_pr(repo_path, existing_pr["number"], comment):
+                                        print(f"  {Colors.GREEN}✓ Comment added to PR #{existing_pr['number']}{Colors.NC}")
+                                    else:
+                                        print(f"  {Colors.RED}✗ Failed to comment{Colors.NC}")
+                                elif pr_action != "n":
+                                    print(f"{Colors.YELLOW}Skipped.{Colors.NC}")
+                                    continue
+                            if not existing_pr or pr_action == "n":
+                                try:
+                                    result = subprocess.run(
+                                        ["gh", "pr", "create",
+                                         "--title", pr_title,
+                                         "--body", pr_desc,
+                                         "--base", base_branch,
+                                         "--head", current_branch],
+                                        cwd=repo_path,
+                                        capture_output=True,
+                                        text=True,
+                                    )
+                                    if result.returncode == 0:
+                                        print(f"  {Colors.GREEN}✓ PR created: {result.stdout.strip()}{Colors.NC}")
+                                    else:
+                                        print(f"  {Colors.RED}✗ Failed: {result.stderr.strip()}{Colors.NC}")
+                                except FileNotFoundError:
+                                    print(f"{Colors.RED}gh not found{Colors.NC}")
                         else:
                             print(f"{Colors.YELLOW}Currently on {base_branch} — need to switch to a feature branch.{Colors.NC}")
                             print(f"\n{Colors.CYAN}Available remote branches:{Colors.NC}")
