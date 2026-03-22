@@ -882,23 +882,37 @@ def _get_http_client() -> httpx.AsyncClient:
     return _http_client
 
 
-async def send_to_ollama(base_url: str, model: str, prompt: str, system: str = "", silent: bool = False) -> str:
+async def send_to_ollama(
+    base_url: str,
+    model: str,
+    prompt: str,
+    system: str = "",
+    *,
+    silent: bool = False,
+    options: dict | None = None,
+) -> str:
     messages = []
     if system:
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
 
+    # Smaller num_ctx than the model default keeps KV-cache allocation down — large defaults make
+    # local Ollama feel "stuck" for tens of seconds before the first token. Override via OLLAMA_NUM_CTX.
+    default_options = {
+        "temperature": 0.1,
+        "top_k": 20,
+        "top_p": 0.5,
+        "num_ctx": int(os.getenv("OLLAMA_NUM_CTX", "4096")),
+        "num_predict": int(os.getenv("OLLAMA_NUM_PREDICT", "2000")),
+    }
+    if options:
+        default_options.update(options)
+
     payload = {
         "model": model,
         "messages": messages,
         "stream": True,
-        "options": {
-            "temperature": 0.1,
-            "top_k": 20,
-            "top_p": 0.5,
-            "num_ctx": int(os.getenv("OLLAMA_NUM_CTX", "6144")),
-            "num_predict": int(os.getenv("OLLAMA_NUM_PREDICT", "2000")),
-        },
+        "options": default_options,
     }
 
     try:
@@ -1039,7 +1053,7 @@ async def resolve_file_with_context(
         "poetry.lock", "Pipfile.lock", "Cargo.lock", "composer.lock",
         "Gemfile.lock", "go.sum",
     })
-    _MAX_CONTENT_LINES = 300  # beyond this, send only the diff to keep prompt lean
+    _MAX_CONTENT_LINES = 100
 
     # Parallelise all independent git calls — none of head/base_branch/diff depend on merge_base
     head_task        = asyncio.to_thread(get_branch_file_content, repo_path, head_branch, file_path)
@@ -1067,14 +1081,26 @@ async def resolve_file_with_context(
             "diff_hunks": diff_hunks,
         }
 
-    # Trim oversized files: send only the diff when a version exceeds the line limit
     def _maybe_trim(text: str, label: str) -> str:
         lines = text.splitlines()
         if len(lines) <= _MAX_CONTENT_LINES:
             return text
-        return f"(file is {len(lines)} lines — omitted to keep prompt lean, see CHANGES SUMMARY below)"
+        # For large files, keep first and last 30 lines as structural anchors + rely on diff hunks
+        head_lines = "\n".join(lines[:30])
+        tail_lines = "\n".join(lines[-30:])
+        return (
+            f"{head_lines}\n\n"
+            f"... [{len(lines) - 60} lines omitted — see CHANGES SUMMARY for the relevant diff hunks] ...\n\n"
+            f"{tail_lines}"
+        )
 
     file_context = _build_file_context(file_path)
+
+    # Estimate how large the prompt will be and scale num_ctx accordingly
+    prompt_content_len = sum(len(s) for s in (base_content, base_head_content, head_content, diff_hunks or "") if s)
+    estimated_tokens = prompt_content_len // 4 + 800  # ~4 chars/token + system prompt overhead
+    num_ctx = max(4096, min(int(estimated_tokens * 1.5), 16384))
+    num_predict = max(512, min(int(max(len(head_content or ""), len(base_head_content or "")) // 3) + 256, 4096))
 
     system_prompt = f"""You are a senior systems engineer resolving a Git merge conflict.
 
@@ -1120,7 +1146,10 @@ CHANGES SUMMARY (diff between base and head):
 
 Resolve this conflict and output ONLY the final merged file content."""
 
-    response = await send_to_ollama(base_url, model, user_prompt, system=system_prompt, silent=silent)
+    response = await send_to_ollama(
+        base_url, model, user_prompt, system=system_prompt, silent=silent,
+        options={"num_ctx": num_ctx, "num_predict": num_predict},
+    )
 
     explanation = ""
     if explanation_mode and "<<<EXPLANATION>>>" in response:
@@ -1141,22 +1170,6 @@ Resolve this conflict and output ONLY the final merged file content."""
         "base_branch_version": base_head_content,
         "diff_hunks": diff_hunks
     }
-
-
-async def research_best_practices(base_url: str, model: str, file_path: str, language: str) -> str:
-    system_prompt = """You are an expert software engineer. Research and provide best practices for the given code context. 
-Focus on: security, performance, maintainability, error handling, and industry standards.
-Be concise - 3-5 key recommendations only."""
-
-    user_prompt = f"""What are the best practices for this type of file: {file_path}
-Language/Framework context: {language}
-
-Provide 3-5 specific best practice recommendations relevant to resolving conflicts in this file."""
-
-    try:
-        return await send_to_ollama(base_url, model, user_prompt, system=system_prompt)
-    except Exception:
-        return "Could not research best practices."
 
 
 async def main():

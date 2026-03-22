@@ -464,18 +464,42 @@ def _get_http_client() -> httpx.AsyncClient:
     return _http_client
 
 
-async def send_to_ollama(base_url: str, model: str, prompt: str, system: str = "") -> str:
+def _truncate_diff_for_commit_analysis(diff: str) -> str:
+    """Cap diff size so Ollama does not allocate a huge context window (very slow on CPU/GPU)."""
+    max_chars = int(os.getenv("AI_COMMIT_MAX_DIFF_CHARS", "65536"))
+    if len(diff) <= max_chars:
+        return diff
+    half = (max_chars - 240) // 2
+    omitted = len(diff) - max_chars
+    return (
+        diff[:half]
+        + f"\n\n... [diff truncated: {omitted} chars omitted for speed; "
+        f"full diff was {len(diff)} chars — file list above is complete] ...\n\n"
+        + diff[-half:]
+    )
+
+
+async def send_to_ollama(
+    base_url: str,
+    model: str,
+    prompt: str,
+    system: str = "",
+    *,
+    options: dict | None = None,
+) -> str:
     """Send prompt to Ollama and return the full response (streamed internally for lower latency)."""
     messages = []
     if system:
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
 
-    payload = {
+    payload: dict = {
         "model": model,
         "messages": messages,
         "stream": True,
     }
+    if options:
+        payload["options"] = options
 
     try:
         client = _get_http_client()
@@ -528,16 +552,23 @@ Body rules:
 - Omit body if change is trivially obvious from the subject"""
 
     files_summary = "\n".join(f["file"] for f in files)
+    diff_for_model = _truncate_diff_for_commit_analysis(diff_output or "")
     prompt = f"""Repo: {repo_name}
 Files changed ({len(files)}):
 {files_summary}
 
 Diff:
-{diff_output or "(no diff)"}
+{diff_for_model or "(no diff)"}
 
 Output only JSON."""
 
-    response = await send_to_ollama(base_url, model, prompt, system=system_prompt)
+    response = await send_to_ollama(
+        base_url,
+        model,
+        prompt,
+        system=system_prompt,
+        options=_ollama_options_for_commit_segmentation(),
+    )
 
     debug = os.getenv("AI_COMMIT_DEBUG")
     if debug:
@@ -583,6 +614,17 @@ Output only JSON."""
 
     file_list = [f["file"] for f in files]
     return [{"description": f"Update {len(file_list)} files", "subject": f"Update {len(file_list)} files", "body": "", "files": file_list}]
+
+
+def _ollama_options_for_commit_segmentation() -> dict:
+    """Bounded context + output — avoids Ollama's default very large num_ctx (slow on local models)."""
+    return {
+        "temperature": 0.2,
+        "top_k": 40,
+        "top_p": 0.9,
+        "num_ctx": int(os.getenv("OLLAMA_COMMIT_NUM_CTX", "8192")),
+        "num_predict": int(os.getenv("OLLAMA_COMMIT_NUM_PREDICT", "1536")),
+    }
 
 
 DEEPIRI_PR_TEMPLATE = """## IMPORTANT
@@ -721,7 +763,10 @@ PR_CHANGES:
 
     user_prompt = f"Commits:\n{commit_log}"
 
-    raw = await send_to_ollama(base_url, model, user_prompt, system=system_prompt)
+    raw = await send_to_ollama(
+        base_url, model, user_prompt, system=system_prompt,
+        options={"num_ctx": 4096, "num_predict": 1024, "temperature": 0.3},
+    )
 
     description = ""
     pr_type = "feat"
@@ -1316,6 +1361,80 @@ def show_status(submodules: list[dict], main_repo: dict | None, repo_root: str):
     print("")
 
 
+async def handle_no_changes_pr_flow(repos: list[dict], ollama_url: str, model: str) -> None:
+    """When nothing was committed this session, check if the branch has prior commits and offer PR management."""
+    gh_ready: bool | None = None
+
+    for repo in repos:
+        repo_path = repo["path"]
+        repo_name = repo["name"]
+
+        current_branch = get_current_branch(repo_path)
+        if not current_branch:
+            continue
+        base_branch = get_default_branch(repo_path)
+        if current_branch == base_branch:
+            continue
+
+        branch_commits = get_prior_commits(repo_path, base_branch, 0)
+        if not branch_commits:
+            continue
+
+        print(f"\n{Colors.CYAN}── {repo_name}: {len(branch_commits)} unpushed/open commit(s) on {current_branch} ──{Colors.NC}")
+        for c in branch_commits[-5:]:
+            print(f"  {Colors.YELLOW}·{Colors.NC} {c['subject']}")
+        if len(branch_commits) > 5:
+            print(f"  {Colors.YELLOW}  ... and {len(branch_commits) - 5} more{Colors.NC}")
+
+        print(f"\n{Colors.BLUE}[p] Manage PR  [s] Skip: {Colors.NC}", end="")
+        if input().strip().lower() != "p":
+            continue
+
+        existing_pr = get_existing_pr_for_branch(repo_path, current_branch)
+
+        if existing_pr:
+            print(f"  {Colors.YELLOW}Existing PR #{existing_pr['number']}: {existing_pr['title']}{Colors.NC}")
+            print(f"  {Colors.CYAN}{existing_pr['url']}{Colors.NC}")
+            print(f"\n{Colors.BLUE}[c] Add comment  [s] Skip: {Colors.NC}", end="")
+            if input().strip().lower() == "c":
+                commit_list = "\n".join(f"- {c['subject']}" for c in branch_commits)
+                comment = f"## Commits on this branch\n\n{commit_list}\n\n---\n*ai-commit.py*"
+                if comment_on_pr(repo_path, existing_pr["number"], comment):
+                    print(f"  {Colors.GREEN}✓ Comment added to PR #{existing_pr['number']}{Colors.NC}")
+                else:
+                    print(f"  {Colors.RED}✗ Failed to comment{Colors.NC}")
+        else:
+            if gh_ready is None:
+                gh_ready = await ensure_gh_ready()
+            if not gh_ready:
+                continue
+
+            async with Spinner(f"Generating PR description for {repo_name}..."):
+                pr_title, pr_desc = await generate_pr_description_ai(ollama_url, model, branch_commits)
+
+            print(f"\n{Colors.CYAN}{'─'*60}{Colors.NC}")
+            print(f"Title: {pr_title}")
+            print(pr_desc)
+            print(f"{Colors.CYAN}{'─'*60}{Colors.NC}")
+            print(f"\n{Colors.BLUE}Create PR? [y/N]: {Colors.NC}", end="")
+            if input().strip().lower() == "y":
+                try:
+                    result = subprocess.run(
+                        ["gh", "pr", "create",
+                         "--title", pr_title,
+                         "--body", pr_desc,
+                         "--base", base_branch,
+                         "--head", current_branch],
+                        cwd=repo_path, capture_output=True, text=True,
+                    )
+                    if result.returncode == 0:
+                        print(f"  {Colors.GREEN}✓ PR created: {result.stdout.strip()}{Colors.NC}")
+                    else:
+                        print(f"  {Colors.RED}✗ Failed: {result.stderr.strip()}{Colors.NC}")
+                except FileNotFoundError:
+                    print(f"{Colors.RED}gh not found{Colors.NC}")
+
+
 async def main():
     auto_commit = "-y" in sys.argv or "--yes" in sys.argv
     ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
@@ -1558,6 +1677,10 @@ async def main():
     if skipped_commits > 0:
         print(f"  Skipped: {Colors.YELLOW}{skipped_commits}{Colors.NC}")
     print(f"{Colors.CYAN}{'='*60}{Colors.NC}")
+
+    if total_commits == 0:
+        await handle_no_changes_pr_flow(selected_repos, ollama_url, model)
+        return
 
     if total_commits > 0 and all_commits_made:
         repos_pushed = {}
