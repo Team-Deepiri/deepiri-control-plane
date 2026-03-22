@@ -940,32 +940,71 @@ async def resolve_file_with_context(
     
     diff_hunks = get_file_diff_hunks(repo_path, base_branch, head_branch, file_path)
     
-    explanation_instruction = ""
-    if explanation_mode:
-        explanation_instruction = f"""
 
-After the resolved file content, append exactly this separator on its own line:
-<<<EXPLANATION>>>
-Then provide a brief explanation (2-3 sentences):
-1. What was the conflict about?
-2. Why did you choose the solution you did?
-3. What best practices guided your decision?"""
+    ext = os.path.splitext(file_path)[1].lower()
+    basename = os.path.basename(file_path)
 
-    system_prompt = f"""You are an expert software engineer resolving git merge conflicts.
-You have deep knowledge of software engineering best practices, design patterns, and clean code.
+    if basename in ("package-lock.json", "yarn.lock", "pnpm-lock.yaml", "poetry.lock", "Pipfile.lock", "Cargo.lock"):
+        file_rules = """LOCKFILE RULES (STRICT):
+- Lockfiles are auto-generated — NEVER attempt a manual content merge
+- Output ONLY the INCOMING (base_branch) version unchanged
+- The correct lockfile will be regenerated from the merged package manifest
+- Do NOT mix entries from both sides — this produces a corrupt lockfile"""
+    elif basename in ("package.json", "pyproject.toml", "requirements.txt", "Cargo.toml", "go.mod"):
+        file_rules = """DEPENDENCY MANIFEST RULES:
+- Prefer the most recent compatible version when both branches change the same dependency
+- Do NOT mix incompatible major versions
+- If both branches add different dependencies, include BOTH unless they conflict
+- Preserve all scripts, fields, and metadata from both branches
+- Do not drop devDependencies or peerDependencies from either side"""
+    elif basename == ".gitmodules" or ext == "" and "submodule" in file_path.lower():
+        file_rules = """SUBMODULE RULES:
+- Prefer the pointer from INCOMING (base_branch) for all submodule refs
+- Never attempt to merge submodule contents — only resolve the pointer
+- Ensure the result is a valid .gitmodules or submodule pointer"""
+    elif ext in (".ts", ".tsx", ".js", ".jsx", ".mjs"):
+        file_rules = """TYPESCRIPT/JAVASCRIPT RULES:
+- Keep imports from BOTH branches; deduplicate exact duplicates
+- If both branches add to the same function, combine the additions
+- Prefer INCOMING security/validation additions (helmet, validators, sanitizers)
+- Never remove error handling, logging, or middleware registrations
+- Output must be syntactically valid TypeScript/JavaScript"""
+    elif ext == ".py":
+        file_rules = """PYTHON RULES:
+- Keep imports from BOTH branches; use the most specific import path
+- If both modify the same function, combine changes preserving all behavior
+- Preserve type hints, docstrings, and logging calls
+- Output must be syntactically valid Python"""
+    elif ext in (".yaml", ".yml"):
+        file_rules = """YAML RULES:
+- Preserve all keys from both branches unless directly conflicting
+- For lists (e.g. env vars, volumes), merge the lists — do not drop entries
+- Maintain consistent indentation
+- Output must be valid YAML"""
+    elif ext in (".json",):
+        file_rules = """JSON RULES:
+- Merge all keys from both branches
+- For conflicting scalar values, prefer INCOMING unless HEAD is clearly more specific
+- Output must be valid JSON with no trailing commas"""
+    else:
+        file_rules = """GENERAL RULES:
+- Keep changes from BOTH branches when they touch different areas
+- For direct conflicts, prefer the more complete/correct implementation
+- Preserve comments, logging, and error handling from both sides"""
 
-When resolving conflicts:
-1. Keep BOTH changes if they're in different functions/methods/lines
-2. If truly incompatible, choose the better implementation considering:
-   - Correctness and bug prevention
-   - Performance and efficiency
-   - Readability and maintainability
-   - Following language/framework conventions
-   - Security best practices
-3. Preserve important comments
-4. Use consistent code style with the existing file
-5. Output ONLY the resolved file content - no markdown, no explanations (unless explanation mode)
-6. If uncertain, combine both approaches where safe to do so"""
+    system_prompt = f"""You are a senior systems engineer specializing in Git, dependency management, and large-scale monorepos.
+Resolve the merge conflict below to produce a correct, production-ready result.
+
+BASE = common ancestor, HEAD = current branch, INCOMING = target branch (dev/main).
+
+UNIVERSAL RULES:
+- Use BASE to understand intent, not just differences
+- Never drop functionality unless clearly obsolete
+- No conflict markers, no commentary, no markdown in output
+- Output ONLY the final merged file content
+
+{file_rules}
+{"" if not explanation_mode else chr(10) + "After the file content, append <<<EXPLANATION>>> on its own line, then 2-3 sentences explaining the resolution."}"""
 
     user_prompt = f"""Resolve a merge conflict between two branches.
 
@@ -992,8 +1031,8 @@ HEAD_BRANCH VERSION ({head_branch} - incoming changes):
 
 CHANGES SUMMARY (diff between base and head):
 {diff_hunks[:3000] if diff_hunks else "(no hunks)"}
-{explanation_instruction}
-Resolve this conflict and output ONLY the final resolved file content."""
+
+Resolve this conflict and output ONLY the final merged file content."""
 
     response = await send_to_ollama(base_url, model, user_prompt, system=system_prompt, silent=silent)
 
@@ -1386,16 +1425,29 @@ async def handle_resolve_conflicts_between_branches(repo_path: str, repo_name: s
         print(f"\n{Colors.GREEN}No hard conflicts - git can auto-merge everything.{Colors.NC}")
 
     if deletion_warnings:
-        print(f"\n{Colors.YELLOW}{len(deletion_warnings)} file(s) deleted in {head_branch} but still in {base_branch} (merge will remove them):{Colors.NC}")
-        for f in deletion_warnings:
-            print(f"  {Colors.YELLOW}-{Colors.NC} {f}")
+        print(f"\n{Colors.YELLOW}{len(deletion_warnings)} file(s) deleted in {head_branch} will stay deleted after merge  "
+              f"[d to inspect]{Colors.NC}")
 
     print(f"\n{Colors.CYAN}This will merge {base_branch} into {head_branch} with AI conflict resolution{Colors.NC}")
-    print(f"{Colors.CYAN}[y] Proceed  [n] Cancel: {Colors.NC}", end="")
-    if input().strip().lower() != "y":
-        print("Cancelled")
-        return
 
+    prompt = f"{Colors.CYAN}[y] Proceed  [n] Cancel"
+    if deletion_warnings:
+        prompt += "  [d] Inspect deletions"
+    prompt += f": {Colors.NC}"
+
+    while True:
+        print(prompt, end="")
+        choice = input().strip().lower()
+        if choice == "d" and deletion_warnings:
+            print(f"\n{Colors.YELLOW}Files that will be deleted from {base_branch}:{Colors.NC}")
+            for f in deletion_warnings:
+                print(f"  {Colors.YELLOW}-{Colors.NC} {f}")
+            print()
+        elif choice == "y":
+            break
+        else:
+            print("Cancelled")
+            return
     has_changes = has_uncommitted_changes(repo_path)
     if has_changes:
         print(f"{Colors.YELLOW}Stashing uncommitted changes...{Colors.NC}")
@@ -1547,8 +1599,15 @@ async def handle_resolve_conflicts_between_branches(repo_path: str, repo_name: s
             decision = "y"
 
         if decision == "y":
+            # Check resolved content doesn't still have conflict markers
+            content = result["content"]
+            if any(m in content for m in ("<<<<<<< ", "======= ", ">>>>>>> ")):
+                print(f"  {Colors.RED}AI left conflict markers in output — skipping (use [e] to fix manually){Colors.NC}")
+                skipped += 1
+                continue
             with open(full_path, "w") as f:
-                f.write(result["content"])
+                f.write(content)
+            subprocess.run(["git", "add", file_path], cwd=repo_path, capture_output=True)
             resolved += 1
 
     print(f"\n{Colors.CYAN}{'='*60}{Colors.NC}")
@@ -1558,12 +1617,29 @@ async def handle_resolve_conflicts_between_branches(repo_path: str, repo_name: s
         print(f"  Skipped: {skipped}")
     print(f"{Colors.CYAN}{'='*60}{Colors.NC}")
 
+    # Pop stash before committing so stash-pop conflicts surface cleanly
+    if has_changes:
+        pop = subprocess.run(["git", "stash", "pop"], cwd=repo_path, capture_output=True, text=True)
+        if pop.returncode != 0:
+            stash_conflicts = get_conflict_files(repo_path)
+            if stash_conflicts:
+                print(f"\n{Colors.YELLOW}Stash pop created {len(stash_conflicts)} conflict(s) — resolve before committing:{Colors.NC}")
+                for f in stash_conflicts:
+                    print(f"  {Colors.YELLOW}!{Colors.NC} {f}")
+                return
+
+    # Final check — refuse to commit if any UU files remain
+    still_conflicted = get_conflict_files(repo_path)
+    if still_conflicted:
+        print(f"\n{Colors.RED}{len(still_conflicted)} file(s) still have conflicts — commit blocked:{Colors.NC}")
+        for f in still_conflicted:
+            print(f"  {Colors.RED}x{Colors.NC} {f}")
+        return
+
     if resolved > 0:
-        subprocess.run(["git", "add", "-A"], cwd=repo_path, capture_output=True)
-        
         print(f"\n{Colors.CYAN}[c] Commit changes  [p] Commit & push  [q] Just finish: {Colors.NC}", end="")
         action = input().strip().lower()
-        
+
         if action == "c" or action == "p":
             result = subprocess.run(
                 ["git", "commit", "--no-edit"],
@@ -1573,7 +1649,7 @@ async def handle_resolve_conflicts_between_branches(repo_path: str, repo_name: s
             )
             if result.returncode == 0:
                 print(f"{Colors.GREEN}Committed!{Colors.NC}")
-                
+
                 if action == "p":
                     result = subprocess.run(
                         ["git", "push", "origin", head_branch],
@@ -1587,9 +1663,6 @@ async def handle_resolve_conflicts_between_branches(repo_path: str, repo_name: s
                         print(f"{Colors.RED}Push failed: {result.stderr}{Colors.NC}")
             else:
                 print(f"{Colors.RED}Commit failed: {result.stderr}{Colors.NC}")
-    
-    if has_changes:
-        subprocess.run(["git", "stash", "pop"], cwd=repo_path, capture_output=True)
 
 
 async def handle_merge_flow(repo_path: str, repo_name: str, ollama_url: str, root_path: str):
@@ -1656,7 +1729,14 @@ async def handle_merge_flow(repo_path: str, repo_name: str, ollama_url: str, roo
                 print(f"{Colors.RED}Push failed{Colors.NC}")
     
     if has_changes:
-        subprocess.run(["git", "stash", "pop"], cwd=repo_path, capture_output=True)
+        pop = subprocess.run(["git", "stash", "pop"], cwd=repo_path, capture_output=True, text=True)
+        if pop.returncode != 0:
+            stash_conflicts = get_conflict_files(repo_path)
+            if stash_conflicts:
+                print(f"\n{Colors.YELLOW}Stash pop created {len(stash_conflicts)} conflict(s) in files you had open:{Colors.NC}")
+                for f in stash_conflicts:
+                    print(f"  {Colors.YELLOW}!{Colors.NC} {f}")
+                print(f"{Colors.GRAY}Tip: use [r] Resolve conflicts from the main menu to fix these.{Colors.NC}")
 
 
 async def resolve_merge_conflicts(
@@ -1664,14 +1744,19 @@ async def resolve_merge_conflicts(
     current_branch: str = None, incoming_branch: str = None
 ):
     current_branch = current_branch or get_current_branch(repo_path)
-    
+
     in_merge = os.path.isfile(os.path.join(repo_path, ".git", "MERGE_HEAD"))
     if in_merge and not incoming_branch:
         with open(os.path.join(repo_path, ".git", "MERGE_HEAD"), "r") as f:
             incoming_branch = f.read().strip()
     elif not incoming_branch:
-        print(f"{Colors.YELLOW}Could not determine incoming branch{Colors.NC}")
-        return
+        # No active merge (e.g. stash pop left conflicts after merge was committed).
+        # Use ORIG_HEAD as the "other side" reference, falling back to HEAD~1.
+        orig = subprocess.run(
+            ["git", "rev-parse", "--verify", "ORIG_HEAD"],
+            cwd=repo_path, capture_output=True, text=True
+        )
+        incoming_branch = orig.stdout.strip() if orig.returncode == 0 else "HEAD~1"
     
     print(Hints.RESOLVE)
     
