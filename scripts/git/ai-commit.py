@@ -941,7 +941,7 @@ The commits are divided into two sections:
 - Prior commits: commits already on the branch from earlier pushes
 - New commits: commits made in this session
 
-From ALL commits produce ONLY these two things — nothing else:
+From ALL commits produce ONLY the following — nothing else:
 
 1. DESCRIPTION: 1-3 sentences explaining what the PR does and why. Be specific, name actual systems/classes.
    Consider the full context of both prior and new commits.
@@ -959,6 +959,11 @@ From ALL commits produce ONLY these two things — nothing else:
    Name actual classes, methods, or files. No vague bullets.
    Cover both prior and new commits when relevant.
 
+4. TESTING: 2-4 sentences describing how you would verify this PR (concrete commands, files to touch, or flows).
+   Mention the repo or script if relevant (e.g. run a specific test file, manual check of a CLI).
+
+5. TESTING_EXTRA: Optional extra bullets or short notes — edge cases, env vars, Docker/Ollama, or follow-up QA.
+
 Output format — use EXACTLY these markers, no other text:
 
 PR_DESCRIPTION:
@@ -970,12 +975,19 @@ PR_TYPE:
 PR_CHANGES:
 - <change>
 - <change>
-- <change>"""
+- <change>
+
+PR_TESTING:
+<how to verify / what to run>
+
+PR_TESTING_EXTRA:
+- <optional bullet>
+- <optional bullet>"""
 
     user_prompt = f"Commits:\n{commit_log}"
 
     pr_opts = {
-        "num_predict": 1024,
+        "num_predict": 1536,
         "temperature": 0.3,
     }
     raw = await send_to_ollama(
@@ -989,6 +1001,8 @@ PR_CHANGES:
     description = ""
     pr_type = "feat"
     changes_lines: list[str] = []
+    testing_main = ""
+    testing_extra = ""
     current = None
 
     for line in raw.splitlines():
@@ -999,6 +1013,16 @@ PR_CHANGES:
             current = "type"
         elif line == "PR_CHANGES:":
             current = "changes"
+        elif line.startswith("PR_TESTING_EXTRA:") or line.startswith("PR_TESTING_DETAILS:"):
+            current = "testing_extra"
+            rest = line.split(":", 1)[1].strip() if ":" in line else ""
+            if rest:
+                testing_extra += rest + "\n"
+        elif line.startswith("PR_TESTING:"):
+            current = "testing"
+            rest = line[len("PR_TESTING:") :].strip()
+            if rest:
+                testing_main += rest + " "
         elif current == "desc" and line:
             description += line + " "
         elif current == "type" and line:
@@ -1009,9 +1033,22 @@ PR_CHANGES:
                 pr_type = found
         elif current == "changes" and line.startswith("-"):
             changes_lines.append(line)
+        elif current == "testing" and line:
+            testing_main += line + " "
+        elif current == "testing_extra" and line:
+            testing_extra += line + "\n"
 
     description = description.strip()
     changes_block = "\n".join(changes_lines) if changes_lines else "- See commits above"
+    testing_main = testing_main.strip()
+    testing_extra = testing_extra.strip()
+    if not testing_main:
+        testing_main = (
+            "Run the relevant local flow (e.g. the script or service you changed), then smoke-test the happy path. "
+            "If tests exist for the touched module, run them with your usual test command."
+        )
+    if not testing_extra:
+        testing_extra = "_None required — add notes here if QA needs a special env, feature flag, or data setup._"
 
     pr_desc = f"""IMPORTANT:
 - PR must be opened from your personal branch → dev
@@ -1043,9 +1080,11 @@ PR_CHANGES:
 
 ## Testing
 
-Explain how you verified your changes and how to test your feature:
+{testing_main}
 
 Additional testing details:
+
+{testing_extra}
 
 ---
 
