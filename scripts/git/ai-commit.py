@@ -3,6 +3,17 @@
 AI-Powered Git Commit Script for Deepiri Platform
 Analyzes git diffs, groups into logical commits, generates detailed commit messages.
 Handles: recursive repo detection, submodule support, segmented commits, interactive selection.
+
+Performance / Ollama (optional env):
+  OLLAMA_KEEP_ALIVE                — keep model in VRAM between runs (default 30m)
+  OLLAMA_COMMIT_NUM_PREDICT        — max output tokens on full path (default 768)
+  OLLAMA_COMMIT_NUM_PREDICT_SIMPLE — max output tokens on fast path (default 256)
+  AI_COMMIT_SIMPLE_MAX_FILES       — fast path when <= N files and no conflict markers (default 5)
+  AI_COMMIT_MAX_DIFF_CHARS         — diff char cap, full path (default 65536)
+  AI_COMMIT_MAX_DIFF_CHARS_SIMPLE  — diff char cap, fast path (default 4000 * num_files)
+
+CRITICAL: Never send num_ctx/num_batch/num_gpu in per-request Ollama options.
+Those are model-init params — changing them causes a full model reload (~30-60s).
 """
 import asyncio
 import json
@@ -465,19 +476,126 @@ def _get_http_client() -> httpx.AsyncClient:
     return _http_client
 
 
-def _truncate_diff_for_commit_analysis(diff: str) -> str:
-    """Cap diff size so Ollama does not allocate a huge context window (very slow on CPU/GPU)."""
-    max_chars = int(os.getenv("AI_COMMIT_MAX_DIFF_CHARS", "65536"))
-    if len(diff) <= max_chars:
+def _truncate_diff_for_commit_analysis(diff: str, *, max_chars: int | None = None) -> str:
+    """Cap diff to max_chars (default from env / 65536). Pass a smaller limit for fast path."""
+    limit = max_chars if max_chars is not None else int(os.getenv("AI_COMMIT_MAX_DIFF_CHARS", "65536"))
+    if len(diff) <= limit:
         return diff
-    half = (max_chars - 240) // 2
-    omitted = len(diff) - max_chars
+    half = (limit - 240) // 2
+    omitted = len(diff) - limit
     return (
         diff[:half]
         + f"\n\n... [diff truncated: {omitted} chars omitted for speed; "
         f"full diff was {len(diff)} chars — file list above is complete] ...\n\n"
         + diff[-half:]
     )
+
+
+def _diff_has_merge_conflict_markers(diff: str) -> bool:
+    """True if diff contains unresolved merge conflict markers — use full segmentation path."""
+    if not diff:
+        return False
+    return bool(
+        re.search(r"^<<<<<<< ", diff, re.MULTILINE)
+        or re.search(r"^>>>>>>> ", diff, re.MULTILINE)
+        or re.search(r"^=======$", diff, re.MULTILINE)
+    )
+
+
+def _ollama_sampling_options(*, simple_path: bool) -> dict:
+    """Sampling-only options. NEVER include model-init params (num_ctx, num_batch, num_gpu) —
+    Ollama reloads the entire model (~30-60s) whenever any of those change between requests.
+    Let the model keep whatever context size it was loaded with.
+    """
+    if simple_path:
+        num_predict = int(os.getenv("OLLAMA_COMMIT_NUM_PREDICT_SIMPLE", "192"))
+    else:
+        num_predict = int(os.getenv("OLLAMA_COMMIT_NUM_PREDICT", "512"))
+
+    return {
+        "temperature": 0.2,
+        "top_k": 40,
+        "top_p": 0.9,
+        "num_predict": num_predict,
+    }
+
+
+def _normalise_commits_from_parsed(
+    parsed: dict,
+    files: list[dict],
+    *,
+    debug: str | None,
+) -> list[dict] | None:
+    """Extract commits list from model JSON and filter to known file paths."""
+    commits = None
+    for key in ("commits", "commit_segmentation_plan", "commit_plan", "segments"):
+        val = parsed.get(key)
+        if isinstance(val, list) and val:
+            commits = val
+            break
+
+    if not commits:
+        return None
+
+    valid_paths = {f["file"] for f in files}
+    normalised: list[dict] = []
+    seen_paths: set[str] = set()
+    for c in commits:
+        raw_files = c.get("files") or c.get("file_paths") or c.get("changed_files") or []
+        actual_files: list[str] = []
+        for f in raw_files:
+            if f in valid_paths and f not in seen_paths:
+                actual_files.append(f)
+                seen_paths.add(f)
+        if actual_files:
+            normalised.append({
+                "description": c.get("subject") or c.get("description") or c.get("commit_message") or "Update files",
+                "subject": c.get("subject") or c.get("description") or c.get("commit_message") or "Update files",
+                "body": c.get("body") or c.get("reasoning") or "",
+                "files": actual_files,
+            })
+
+    if not normalised:
+        return None
+
+    covered = set()
+    for c in normalised:
+        covered.update(c["files"])
+    missing = valid_paths - covered
+    if missing:
+        if debug:
+            print(f"{Colors.YELLOW}[DEBUG] Model omitted files {missing}; merging into last commit.{Colors.NC}")
+        if normalised:
+            normalised[-1]["files"] = list(dict.fromkeys(normalised[-1]["files"] + sorted(missing)))
+        else:
+            return None
+
+    if debug:
+        print(f"{Colors.GREEN}[DEBUG] Parsed {len(normalised)} commit(s){Colors.NC}")
+    return normalised
+
+
+def _parse_commit_plan_json(response: str, files: list[dict], *, debug: str | None) -> list[dict] | None:
+    """Parse JSON commit plan; tolerant of minor whitespace. Returns None if unusable."""
+    text = (response or "").strip()
+    if not text:
+        return None
+
+    parsed: dict | None = None
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        cleaned = re.sub(r"```(?:json)?\s*", "", text).strip()
+        try:
+            brace_start = cleaned.find("{")
+            if brace_start != -1:
+                parsed, _ = json.JSONDecoder().raw_decode(cleaned, brace_start)
+        except json.JSONDecodeError:
+            return None
+
+    if not isinstance(parsed, dict):
+        return None
+    return _normalise_commits_from_parsed(parsed, files, debug=debug)
 
 
 async def send_to_ollama(
@@ -487,8 +605,14 @@ async def send_to_ollama(
     system: str = "",
     *,
     options: dict | None = None,
+    keep_alive: str | None = None,
 ) -> str:
-    """Send prompt to Ollama and return the full response (streamed internally for lower latency)."""
+    """Send prompt to Ollama and return the full response (streamed internally for lower latency).
+
+    keep_alive: how long to keep the model in VRAM (default from env or 30m).
+    NOTE: do NOT pass model-init params (num_ctx, num_batch, num_gpu) via options on every call —
+    Ollama reloads the model when those change, adding 30-60s overhead.
+    """
     messages = []
     if system:
         messages.append({"role": "system", "content": system})
@@ -499,12 +623,18 @@ async def send_to_ollama(
         "messages": messages,
         "stream": True,
     }
+    ka = keep_alive if keep_alive is not None else os.getenv("OLLAMA_KEEP_ALIVE", "30m")
+    if ka:
+        payload["keep_alive"] = ka
     if options:
         payload["options"] = options
+
+    prompt_chars = len(system) + len(prompt)
 
     try:
         client = _get_http_client()
         tokens: list[str] = []
+        done_chunk: dict = {}
         async with client.stream("POST", f"{base_url}/api/chat", json=payload) as response:
             response.raise_for_status()
             async for line in response.aiter_lines():
@@ -515,21 +645,102 @@ async def send_to_ollama(
                 if token:
                     tokens.append(token)
                 if chunk.get("done"):
+                    done_chunk = chunk
                     break
+
+        _print_ollama_timing(done_chunk, prompt_chars, len(tokens))
         return "".join(tokens)
     except Exception as e:
         print(f"{Colors.RED}Error sending request to Ollama: {e}{Colors.NC}")
         sys.exit(1)
 
 
-async def analyze_and_generate_commits(
+def _print_ollama_timing(done: dict, prompt_chars: int, num_response_chunks: int) -> None:
+    """Print Ollama timing breakdown from the done chunk. Always shown — this is critical perf data."""
+    if not done:
+        return
+    load_ns = done.get("load_duration", 0)
+    prompt_ns = done.get("prompt_eval_duration", 0)
+    eval_ns = done.get("eval_duration", 0)
+    total_ns = done.get("total_duration", 0)
+    prompt_tokens = done.get("prompt_eval_count", 0)
+    eval_tokens = done.get("eval_count", 0)
+
+    load_s = load_ns / 1e9
+    prompt_s = prompt_ns / 1e9
+    eval_s = eval_ns / 1e9
+    total_s = total_ns / 1e9
+
+    prompt_tps = prompt_tokens / prompt_s if prompt_s > 0 else 0
+    eval_tps = eval_tokens / eval_s if eval_s > 0 else 0
+
+    parts = [f"total={total_s:.1f}s"]
+    if load_s > 0.5:
+        parts.append(f"load={load_s:.1f}s")
+    parts.append(f"prompt={prompt_s:.1f}s ({prompt_tokens}tok, {prompt_tps:.0f}t/s)")
+    parts.append(f"gen={eval_s:.1f}s ({eval_tokens}tok, {eval_tps:.0f}t/s)")
+    parts.append(f"input~{prompt_chars}chars")
+
+    print(f"  {Colors.YELLOW}⏱{Colors.NC}  {' | '.join(parts)}")
+
+
+_SIMPLE_COMMIT_SYSTEM = """Git commit assistant. Output ONLY JSON, no markdown:
+{"commits":[{"subject":"verb-first ≤100chars naming real class/fn/config","body":"- exact thing: what changed","files":["exact/path/from/list"]}]}
+Rules: partition every provided file into exactly one commit; subject starts with Add/Fix/Refactor/Remove/Implement/Extract; body 2-4 bullets or omit if obvious; if changes are clearly independent (CI vs app, docs vs code) use multiple commits."""
+
+
+async def _generate_simple_commit(
     base_url: str,
     model: str,
     repo_name: str,
     diff_output: str,
     files: list[dict],
 ) -> list[dict]:
-    """Single Ollama call: segment files into commits AND write subject+body for each."""
+    """Fast path: one Ollama call, smaller prompt — still allows multiple commits if justified."""
+    files_summary = "\n".join(f["file"] for f in files)
+    simple_diff_cap = int(os.getenv("AI_COMMIT_MAX_DIFF_CHARS_SIMPLE", str(2000 * max(len(files), 1))))
+    diff_for_model = _truncate_diff_for_commit_analysis(diff_output or "", max_chars=simple_diff_cap)
+    prompt = f"""Repo: {repo_name}
+Files you must cover ({len(files)}), use these exact paths:
+{files_summary}
+
+Diff:
+{diff_for_model or "(no diff)"}
+
+Output JSON only."""
+
+    opts = _ollama_sampling_options(simple_path=True)
+
+    response = await send_to_ollama(
+        base_url,
+        model,
+        prompt,
+        system=_SIMPLE_COMMIT_SYSTEM,
+        options=opts,
+    )
+
+    debug = os.getenv("AI_COMMIT_DEBUG")
+    if debug:
+        print(f"\n{Colors.YELLOW}[DEBUG] Raw model response (simple path):{Colors.NC}\n{response}\n")
+
+    parsed = _parse_commit_plan_json(response, files, debug=debug)
+    if parsed:
+        return parsed
+
+    print(f"{Colors.YELLOW}Simple path parse failed — retrying with full segmentation prompt.{Colors.NC}")
+    return await _analyze_and_generate_commits_full(
+        base_url, model, repo_name, diff_output, files,
+    )
+
+
+async def _analyze_and_generate_commits_full(
+    base_url: str,
+    model: str,
+    repo_name: str,
+    diff_output: str,
+    files: list[dict],
+) -> list[dict]:
+    """Full segmentation prompt for larger changesets, merge conflicts, or simple-path fallback."""
 
     system_prompt = """You are a git commit assistant. Given changed files and their diff, group them into logical commits and write a specific commit message for each group.
 
@@ -541,6 +752,7 @@ Grouping rules:
 - Dockerfile/CI config = own commit; docs/ = own commit
 - Group files in the same directory serving the same purpose
 - 6+ files must produce 3+ commits
+- If the diff contains merge conflict markers or conflict resolutions, group by concern and describe how conflicts were resolved in the body
 
 Subject rules:
 - Name the actual class, method, function, or config key that changed
@@ -550,6 +762,7 @@ Subject rules:
 
 Body rules:
 - 2-4 bullet points, each naming an exact method/class/field and what changed
+- For conflict resolution, name files/hunks and what was kept or merged
 - Omit body if change is trivially obvious from the subject"""
 
     files_summary = "\n".join(f["file"] for f in files)
@@ -563,52 +776,23 @@ Diff:
 
 Output only JSON."""
 
+    opts = _ollama_sampling_options(simple_path=False)
+
     response = await send_to_ollama(
         base_url,
         model,
         prompt,
         system=system_prompt,
-        options=_ollama_options_for_commit_segmentation(),
+        options=opts,
     )
 
     debug = os.getenv("AI_COMMIT_DEBUG")
     if debug:
         print(f"\n{Colors.YELLOW}[DEBUG] Raw model response:{Colors.NC}\n{response}\n")
 
-    cleaned = re.sub(r"```(?:json)?\s*", "", response).strip()
-
-    try:
-        brace_start = cleaned.find("{")
-        if brace_start != -1:
-            parsed, _ = json.JSONDecoder().raw_decode(cleaned, brace_start)
-
-            commits = None
-            for key in ("commits", "commit_segmentation_plan", "commit_plan", "segments"):
-                val = parsed.get(key)
-                if isinstance(val, list) and val:
-                    commits = val
-                    break
-
-            if commits:
-                valid_paths = {f["file"] for f in files}
-                normalised = []
-                for c in commits:
-                    raw_files = c.get("files") or c.get("file_paths") or c.get("changed_files") or []
-                    actual_files = [f for f in raw_files if f in valid_paths]
-                    if actual_files:
-                        normalised.append({
-                            "description": c.get("subject") or c.get("description") or c.get("commit_message") or "Update files",
-                            "subject": c.get("subject") or c.get("description") or c.get("commit_message") or "Update files",
-                            "body": c.get("body") or c.get("reasoning") or "",
-                            "files": actual_files,
-                        })
-                if normalised:
-                    if debug:
-                        print(f"{Colors.GREEN}[DEBUG] Parsed {len(normalised)} commit(s){Colors.NC}")
-                    return normalised
-    except (json.JSONDecodeError, KeyError) as e:
-        if debug:
-            print(f"{Colors.RED}[DEBUG] JSON parse failed: {e}{Colors.NC}")
+    parsed = _parse_commit_plan_json(response, files, debug=debug)
+    if parsed:
+        return parsed
 
     print(f"{Colors.RED}Model returned unparseable response — falling back to single commit.{Colors.NC}")
     print(f"{Colors.YELLOW}Tip: set AI_COMMIT_DEBUG=1 to see raw model output.{Colors.NC}")
@@ -617,15 +801,28 @@ Output only JSON."""
     return [{"description": f"Update {len(file_list)} files", "subject": f"Update {len(file_list)} files", "body": "", "files": file_list}]
 
 
-def _ollama_options_for_commit_segmentation() -> dict:
-    """Bounded context + output — avoids Ollama's default very large num_ctx (slow on local models)."""
-    return {
-        "temperature": 0.2,
-        "top_k": 40,
-        "top_p": 0.9,
-        "num_ctx": int(os.getenv("OLLAMA_COMMIT_NUM_CTX", "8192")),
-        "num_predict": int(os.getenv("OLLAMA_COMMIT_NUM_PREDICT", "1536")),
-    }
+async def analyze_and_generate_commits(
+    base_url: str,
+    model: str,
+    repo_name: str,
+    diff_output: str,
+    files: list[dict],
+) -> list[dict]:
+    """Segment diffs into commits; fast path for small, non-conflict changesets."""
+
+    diff_output = diff_output or ""
+    use_simple = (
+        len(files) <= int(os.getenv("AI_COMMIT_SIMPLE_MAX_FILES", "5"))
+        and not _diff_has_merge_conflict_markers(diff_output)
+    )
+
+    if use_simple:
+        return await _generate_simple_commit(
+            base_url, model, repo_name, diff_output, files,
+        )
+    return await _analyze_and_generate_commits_full(
+        base_url, model, repo_name, diff_output, files,
+    )
 
 
 DEEPIRI_PR_TEMPLATE = """## IMPORTANT
@@ -736,6 +933,7 @@ The commits are divided into two sections:
 From ALL commits produce ONLY these two things — nothing else:
 
 1. DESCRIPTION: 1-3 sentences explaining what the PR does and why. Be specific, name actual systems/classes.
+   Consider the full context of both prior and new commits.
 
 2. TYPE: Pick exactly ONE type that best describes the dominant change:
    - feat     → new feature or capability added
@@ -746,10 +944,11 @@ From ALL commits produce ONLY these two things — nothing else:
    - perf     → performance improvement
    - test     → tests added or updated
 
-3. CHANGES: 3-8 bullet points. Each bullet is a concise change from the commits.
+3. CHANGES: 3-8 bullet points. Each bullet is a concise change pulled directly from the commits.
    Name actual classes, methods, or files. No vague bullets.
+   Cover both prior and new commits when relevant.
 
-Output format:
+Output format — use EXACTLY these markers, no other text:
 
 PR_DESCRIPTION:
 <1-3 sentences>
@@ -764,9 +963,16 @@ PR_CHANGES:
 
     user_prompt = f"Commits:\n{commit_log}"
 
+    pr_opts = {
+        "num_predict": 1024,
+        "temperature": 0.3,
+    }
     raw = await send_to_ollama(
-        base_url, model, user_prompt, system=system_prompt,
-        options={"num_ctx": 4096, "num_predict": 1024, "temperature": 0.3},
+        base_url,
+        model,
+        user_prompt,
+        system=system_prompt,
+        options=pr_opts,
     )
 
     description = ""
