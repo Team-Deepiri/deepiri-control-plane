@@ -1486,8 +1486,9 @@ def get_system_resources() -> dict:
                 parts = lines[1].split()
                 if len(parts) > 1:
                     resources["ram_gb"] = int(parts[1]) / (1024**3)
-    except Exception:
-        pass
+    except Exception as e:
+        # Best-effort RAM detection failed; keep default value of 0.0.
+        print(f"[ai-commit] Warning: failed to detect system RAM: {e}", file=sys.stderr)
 
     try:
         result = subprocess.run(
@@ -1498,8 +1499,9 @@ def get_system_resources() -> dict:
         if result.returncode == 0 and result.stdout.strip():
             vram_mb = int(result.stdout.strip().split("\n")[0])
             resources["vram_gb"] = vram_mb / 1024
-    except Exception:
-        pass
+    except Exception as e:
+        # Best-effort VRAM detection failed; keep default value of 0.0.
+        print(f"[ai-commit] Warning: failed to detect GPU VRAM: {e}", file=sys.stderr)
 
     return resources
 
