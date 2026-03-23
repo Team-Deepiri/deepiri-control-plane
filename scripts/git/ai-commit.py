@@ -14,6 +14,8 @@ Performance / Ollama (optional env):
 
 CRITICAL: Never send num_ctx/num_batch/num_gpu in per-request Ollama options.
 Those are model-init params — changing them causes a full model reload (~30-60s).
+
+CLI: --full-auto or --full — all repos (submodules first), auto model pick, commit all, push, generate PR, create/comment PR without prompts.
 """
 import asyncio
 import json
@@ -1441,6 +1443,124 @@ async def get_ollama_models(base_url: str) -> list:
         return []
 
 
+def get_last_used_model(base_url: str) -> str | None:
+    """Best-effort: infer last-used model from local Ollama logs."""
+    try:
+        ollama_dir = os.path.expanduser("~/.ollama")
+        if os.path.exists(ollama_dir):
+            logs_dir = os.path.join(ollama_dir, "logs")
+            if os.path.exists(logs_dir):
+                for f in os.listdir(logs_dir):
+                    if f.endswith(".log"):
+                        log_path = os.path.join(logs_dir, f)
+                        try:
+                            with open(log_path, "r", errors="ignore") as fp:
+                                content = fp.read()
+                                lines = content.split("\n")
+                                for line in reversed(lines):
+                                    if "pull model" in line.lower():
+                                        for model in ["qwen", "gemma", "llama", "mistral", "codellama", "phi"]:
+                                            if model in line.lower():
+                                                return line.lower().split(model)[0].split()[-1] + model
+                                    if "using model" in line.lower():
+                                        for model in ["qwen", "gemma", "llama", "mistral", "codellama", "phi"]:
+                                            if model in line.lower():
+                                                idx = line.lower().find(model)
+                                                return line.lower()[idx:].split()[0]
+                        except Exception:
+                            pass
+    except Exception:
+        pass
+    return None
+
+
+def get_system_resources() -> dict:
+    """Get system RAM and GPU VRAM info (Linux/WSL)."""
+    resources: dict = {"ram_gb": 0.0, "vram_gb": 0.0}
+
+    try:
+        result = subprocess.run(["free", "-b"], capture_output=True, text=True)
+        if result.returncode == 0:
+            lines = result.stdout.strip().split("\n")
+            if len(lines) > 1:
+                parts = lines[1].split()
+                if len(parts) > 1:
+                    resources["ram_gb"] = int(parts[1]) / (1024**3)
+    except Exception:
+        pass
+
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            vram_mb = int(result.stdout.strip().split("\n")[0])
+            resources["vram_gb"] = vram_mb / 1024
+    except Exception:
+        pass
+
+    return resources
+
+
+MODEL_REQUIREMENTS = {
+    "qwen2.5:14b": {"ram": 16, "vram": 10},
+    "qwen2.5:7b": {"ram": 8, "vram": 6},
+    "gemma2:9b": {"ram": 10, "vram": 7},
+    "gemma2:2b": {"ram": 4, "vram": 2},
+    "llama3.1:8b": {"ram": 8, "vram": 6},
+    "llama3.1:70b": {"ram": 64, "vram": 40},
+    "mistral:7b": {"ram": 8, "vram": 6},
+    "codellama:7b": {"ram": 8, "vram": 6},
+    "phi3:14b": {"ram": 14, "vram": 10},
+    "phi3:3.8b": {"ram": 4, "vram": 3},
+}
+
+
+def select_best_model(models: list[str], resources: dict) -> str:
+    """Pick a reasonable default model from available VRAM/RAM."""
+    ram = resources.get("ram_gb", 0)
+    vram = resources.get("vram_gb", 0)
+
+    candidates: list[tuple[str, float]] = []
+    for m in models:
+        model_name = m.split(":")[0].lower() if ":" in m else m.lower()
+
+        for req_name, reqs in MODEL_REQUIREMENTS.items():
+            if model_name in req_name:
+                if vram >= reqs["vram"] or ram >= reqs["ram"]:
+                    score = vram * 2 + ram
+                    candidates.append((m, score))
+                break
+        else:
+            candidates.append((m, 0.0))
+
+    if candidates:
+        candidates.sort(key=lambda x: x[1], reverse=True)
+        return candidates[0][0]
+
+    return models[0] if models else ""
+
+
+def auto_select_model(base_url: str, models: list[str]) -> str:
+    """Auto-select model: try last used from logs, then best fit for hardware."""
+    if not models:
+        return ""
+
+    if len(models) == 1:
+        return models[0]
+
+    last_used = get_last_used_model(base_url)
+    if last_used:
+        for m in models:
+            if last_used in m.lower():
+                return m
+
+    resources = get_system_resources()
+    return select_best_model(models, resources)
+
+
 def confirm_commit(repo_name: str, subject: str, body: str, files: list[str], commit_num: int, total: int) -> bool:
     """Ask user to confirm the commit"""
     print(f"\n{Colors.CYAN}╔{'═'*58}╗{Colors.NC}")
@@ -1692,6 +1812,7 @@ async def handle_no_changes_pr_flow(repos: list[dict], ollama_url: str, model: s
 
 async def main():
     auto_commit = "-y" in sys.argv or "--yes" in sys.argv
+    full_auto = "--full-auto" in sys.argv or "--full" in sys.argv
     ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     root_path = find_script_git_root()
 
@@ -1722,40 +1843,56 @@ async def main():
     print(f"  {len(repos) + 1}) (all)")
     print(f"  status) Show status of all repos")
 
-    print(f"\n{Colors.CYAN}Select repositories to process (comma-separated, number for all):{Colors.NC}", end="")
-    selection = input().strip().lower()
-
-    if selection == "status":
-        submodules = [r for r in repos if r.get("is_submodule")]
-        main_repo = [r for r in repos if not r.get("is_submodule")]
-        main = main_repo[0] if main_repo else None
-        show_status(submodules, main, root_path)
-        sys.exit(0)
-
-    selected_repos = []
-    dirty_submodules_to_process = []
-    main_repo_to_process = None
-    
-    if selection == "all" or selection == str(len(repos) + 1) or selection == "a":
-        repos_with_changes_list = [r for r in repos if r["path"] in repos_with_changes]
-        
-        if not repos_with_changes_list:
-            print(f"\n{Colors.GREEN}No repositories have changes to commit.{Colors.NC}")
-            sys.exit(0)
-        
-        print(f"\n{Colors.CYAN}Processing {len(repos_with_changes_list)} repo(s) with changes:{Colors.NC}")
-        selected_repos = repos_with_changes_list
+    if full_auto:
+        selected_repos = list(repos)
+        selected_repos.sort(key=lambda r: 0 if r.get("is_submodule") else 1)
+        print(f"\n{Colors.YELLOW}[FULL-AUTO]{Colors.NC} All {len(selected_repos)} repos (submodules first); no prompts for commit/push/PR.")
     else:
-        try:
-            indices = [int(x.strip()) - 1 for x in selection.split(",") if x.strip().isdigit()]
-            selected_repos = [repos[i] for i in indices if 0 <= i < len(repos)]
-        except ValueError:
-            print(f"{Colors.RED}Invalid selection.{Colors.NC}")
-            sys.exit(1)
+        print(f"\n{Colors.CYAN}Select repositories to process (comma-separated, number for all):{Colors.NC}", end="")
+        selection = input().strip().lower()
+
+        if selection == "status":
+            submodules = [r for r in repos if r.get("is_submodule")]
+            main_repo = [r for r in repos if not r.get("is_submodule")]
+            main = main_repo[0] if main_repo else None
+            show_status(submodules, main, root_path)
+            sys.exit(0)
+
+        selected_repos = []
+        if selection == "all" or selection == str(len(repos) + 1) or selection == "a":
+            repos_with_changes_list = [r for r in repos if r["path"] in repos_with_changes]
+
+            if not repos_with_changes_list:
+                print(f"\n{Colors.GREEN}No repositories have changes to commit.{Colors.NC}")
+                sys.exit(0)
+
+            print(f"\n{Colors.CYAN}Processing {len(repos_with_changes_list)} repo(s) with changes:{Colors.NC}")
+            selected_repos = repos_with_changes_list
+        else:
+            try:
+                indices = [int(x.strip()) - 1 for x in selection.split(",") if x.strip().isdigit()]
+                selected_repos = [repos[i] for i in indices if 0 <= i < len(repos)]
+            except ValueError:
+                print(f"{Colors.RED}Invalid selection.{Colors.NC}")
+                sys.exit(1)
 
     if not selected_repos:
         print(f"{Colors.RED}No repositories selected.{Colors.NC}")
         sys.exit(1)
+
+    if len(selected_repos) > 1:
+        with ThreadPoolExecutor(max_workers=min(8, len(selected_repos))) as pool:
+            dirty_flags = list(pool.map(lambda r: has_changes(r["path"]), selected_repos))
+        active_repos = [r for r, dirty in zip(selected_repos, dirty_flags) if dirty]
+        skipped_clean = len(selected_repos) - len(active_repos)
+        if skipped_clean:
+            print(f"  {Colors.YELLOW}{skipped_clean} repo(s) have no changes — skipping{Colors.NC}")
+    else:
+        active_repos = selected_repos
+
+    if not active_repos:
+        print(f"{Colors.RED}No repositories with changes to process.{Colors.NC}")
+        sys.exit(0)
 
     if not is_ollama_running(ollama_url):
         print(f"\n{Colors.YELLOW}Ollama is not running.{Colors.NC}")
@@ -1789,6 +1926,11 @@ async def main():
     if len(models) == 1:
         model = models[0]
         print(f"{Colors.GREEN}Using model: {model}{Colors.NC}\n")
+    elif full_auto:
+        model = auto_select_model(ollama_url, models)
+        resources = get_system_resources()
+        print(f"{Colors.GREEN}Auto-selected model: {model}{Colors.NC}")
+        print(f"  System RAM: {resources.get('ram_gb', 0):.1f}GB, GPU VRAM: {resources.get('vram_gb', 0):.1f}GB\n")
     else:
         print(f"\n{Colors.GREEN}Available models:{Colors.NC}")
         for i, m in enumerate(models):
@@ -1811,7 +1953,7 @@ async def main():
     skipped_commits = 0
     all_commits_made = []
 
-    for repo in selected_repos:
+    for repo in active_repos:
         repo_path = repo["path"]
         repo_name = repo["name"]
 
@@ -1872,7 +2014,7 @@ async def main():
             print(f"  {i + 1}) {label[:60]}")
             print(f"     Files: {', '.join(commit.get('files', [])[:5])}{'...' if len(commit.get('files', [])) > 5 else ''}")
 
-        repo_auto_commit = auto_commit
+        repo_auto_commit = auto_commit or full_auto
 
         if not repo_auto_commit:
             print(f"\n{Colors.BLUE}[a] Auto-commit all  [r] Review each  [q] Quit: {Colors.NC}", end="")
@@ -1881,6 +2023,13 @@ async def main():
                 print(f"{Colors.YELLOW}Quitting...{Colors.NC}")
                 sys.exit(0)
             repo_auto_commit = mode == "a"
+
+        if full_auto:
+            print(f"\n{Colors.YELLOW}[FULL-AUTO MODE]{Colors.NC}")
+            print(f"  - Auto-committing all changes")
+            print(f"  - Auto-pushing to remote")
+            print(f"  - Auto-generating PR description")
+            print(f"  - Auto-creating/commenting PRs (skipping confirmations)\n")
 
         print(f"\n{Colors.CYAN}Starting commits...{Colors.NC}")
 
@@ -1934,20 +2083,25 @@ async def main():
     print(f"{Colors.CYAN}{'='*60}{Colors.NC}")
 
     if total_commits == 0:
-        await handle_no_changes_pr_flow(selected_repos, ollama_url, model)
+        await handle_no_changes_pr_flow(active_repos, ollama_url, model)
         return
 
     if total_commits > 0 and all_commits_made:
         repos_pushed = {}
-        
-        print(f"\n{Colors.BLUE}Push to remote? [y/N]: {Colors.NC}", end="")
-        if input().strip().lower() == "y":
+
+        if full_auto:
+            print(f"\n{Colors.CYAN}Pushing to remote (full-auto)...{Colors.NC}")
+            do_push = True
+        else:
+            print(f"\n{Colors.BLUE}Push to remote? [y/N]: {Colors.NC}", end="")
+            do_push = input().strip().lower() == "y"
+        if do_push:
             repos_to_push = {}
             for repo_info in all_commits_made:
                 repo_name = repo_info["repo"]
                 if repo_name not in repos_to_push:
                     repos_to_push[repo_name] = repo_info.get("repo_path", root_path)
-            
+
             for repo_name, repo_path in repos_to_push.items():
                 print(f"\n{Colors.CYAN}Pushing {repo_name}...{Colors.NC}")
                 if push_changes(repo_path):
@@ -1956,19 +2110,25 @@ async def main():
                 else:
                     print(f"{Colors.RED}✗ Push failed{Colors.NC}")
 
-        print(f"\n{Colors.BLUE}Generate PR description? [y/N]: {Colors.NC}", end="")
-        if input().strip().lower() == "y":
+        if full_auto:
+            do_pr = True
+        else:
+            print(f"\n{Colors.BLUE}Generate PR description? [y/N]: {Colors.NC}", end="")
+            do_pr = input().strip().lower() == "y"
+        if do_pr:
             print(f"")
-            
-            repos_commits = {}
+
+            repos_commits: dict[str, list] = {}
             for repo_info in all_commits_made:
                 repo_name = repo_info["repo"]
                 if repo_name not in repos_commits:
                     repos_commits[repo_name] = []
                 repos_commits[repo_name].append(repo_info)
-            
+
+            gh_ready: bool | None = None
+
             for repo_name, commits in repos_commits.items():
-                repo_path = repo_info.get("repo_path", root_path)
+                repo_path = commits[0].get("repo_path", root_path)
                 
                 base_branch = get_default_branch(repo_path)
                 prior_commits = get_prior_commits(repo_path, base_branch, len(commits))
@@ -1982,196 +2142,229 @@ async def main():
                 print(f"Title: {pr_title}\n")
                 print(pr_desc)
                 print(f"\n{Colors.CYAN}{'─'*60}{Colors.NC}")
-                
+
+                if not repos_pushed.get(repo_name):
+                    print(f"\n{Colors.YELLOW}  [WARN] {repo_name} was not pushed — skipping PR creation.{Colors.NC}")
+                    continue
+
                 current_branch = get_current_branch(repo_path)
                 if current_branch == base_branch:
                     print(f"\n{Colors.YELLOW}WARNING: You are currently on the '{base_branch}' branch.{Colors.NC}")
                     print(f"{Colors.YELLOW}You must switch to a feature branch before creating a PR.{Colors.NC}")
-                
-                print(f"\n{Colors.BLUE}Create PR on GitHub? [y/N]: {Colors.NC}", end="")
-                if input().strip().lower() == "y":
+                    if full_auto:
+                        print(f"{Colors.YELLOW}Skipping PR (full-auto cannot run interactive branch setup on {base_branch}).{Colors.NC}")
+                        continue
+
+                if full_auto:
+                    print(f"\n{Colors.CYAN}Auto-creating PR for {repo_name}...{Colors.NC}")
+                    want_pr = True
+                else:
+                    print(f"\n{Colors.BLUE}Create PR on GitHub? [y/N]: {Colors.NC}", end="")
+                    want_pr = input().strip().lower() == "y"
+
+                if not want_pr:
+                    continue
+
+                if gh_ready is None:
                     gh_ready = await ensure_gh_ready()
-                    if gh_ready:
-                        if current_branch and current_branch != base_branch:
-                            existing_pr = get_existing_pr_for_branch(repo_path, current_branch)
-                            if existing_pr:
-                                print(f"  {Colors.YELLOW}Found existing PR: #{existing_pr['number']} — {existing_pr['title']}{Colors.NC}")
-                                print(f"  {Colors.CYAN}URL:{Colors.NC} {existing_pr['url']}")
-                                print(f"\n{Colors.BLUE}[c] Comment on existing PR  [n] Create new PR  [s] Skip: {Colors.NC}", end="")
-                                pr_action = input().strip().lower()
-                                if pr_action == "c":
-                                    commit_list = "\n".join([f"- {c['subject']}" for c in commits])
-                                    comment = f"## New commits pushed\n\n{commit_list}\n\n---\n*Auto-generated by ai-commit.py*"
-                                    if comment_on_pr(repo_path, existing_pr["number"], comment):
-                                        print(f"  {Colors.GREEN}✓ Comment added to PR #{existing_pr['number']}{Colors.NC}")
-                                    else:
-                                        print(f"  {Colors.RED}✗ Failed to comment{Colors.NC}")
-                                elif pr_action != "n":
-                                    print(f"{Colors.YELLOW}Skipped.{Colors.NC}")
-                                    continue
-                            if not existing_pr or pr_action == "n":
-                                try:
-                                    result = subprocess.run(
-                                        ["gh", "pr", "create",
-                                         "--title", pr_title,
-                                         "--body", pr_desc,
-                                         "--base", base_branch,
-                                         "--head", current_branch],
-                                        cwd=repo_path,
-                                        capture_output=True,
-                                        text=True,
-                                    )
-                                    if result.returncode == 0:
-                                        print(f"  {Colors.GREEN}✓ PR created: {result.stdout.strip()}{Colors.NC}")
-                                    else:
-                                        print(f"  {Colors.RED}✗ Failed: {result.stderr.strip()}{Colors.NC}")
-                                except FileNotFoundError:
-                                    print(f"{Colors.RED}gh not found{Colors.NC}")
-                        else:
-                            print(f"{Colors.YELLOW}Currently on {base_branch} — need to switch to a feature branch.{Colors.NC}")
-                            print(f"\n{Colors.CYAN}Available remote branches:{Colors.NC}")
+                if not gh_ready:
+                    if not full_auto:
+                        pr_output_dir = os.path.join(root_path, ".git", "ai-commit-output")
+                        os.makedirs(pr_output_dir, exist_ok=True)
+                        pr_file = os.path.join(pr_output_dir, f"pr-description-{repo_name}.md")
+                        with open(pr_file, "w") as f:
+                            f.write(f"# {pr_title}\n\n{pr_desc}")
+                        print(f"\n{Colors.GREEN}✓ PR description saved to: {pr_file}{Colors.NC}")
+                    else:
+                        print(f"{Colors.YELLOW}Skipping PR creation (gh not available).{Colors.NC}")
+                    continue
+
+                if gh_ready:
+                    if current_branch and current_branch != base_branch:
+                        existing_pr = get_existing_pr_for_branch(repo_path, current_branch)
+                        pr_action = None
+                        if existing_pr:
+                            print(f"  {Colors.YELLOW}Found existing PR: #{existing_pr['number']} — {existing_pr['title']}{Colors.NC}")
+                            print(f"  {Colors.CYAN}URL:{Colors.NC} {existing_pr['url']}")
+                            if full_auto:
+                                commit_list = "\n".join([f"- {c['subject']}" for c in commits])
+                                comment = f"""## New commits pushed
+
+{commit_list}
+
+---
+*Auto-generated comment from ai-commit.py*"""
+                                if comment_on_pr(repo_path, existing_pr["number"], comment):
+                                    print(f"  {Colors.GREEN}✓ Comment added to PR #{existing_pr['number']}{Colors.NC}")
+                                else:
+                                    print(f"  {Colors.RED}✗ Failed to comment{Colors.NC}")
+                                continue
+                            print(f"\n{Colors.BLUE}[c] Comment on existing PR  [n] Create new PR  [s] Skip: {Colors.NC}", end="")
+                            pr_action = input().strip().lower()
+                            if pr_action == "c":
+                                commit_list = "\n".join([f"- {c['subject']}" for c in commits])
+                                comment = f"## New commits pushed\n\n{commit_list}\n\n---\n*Auto-generated by ai-commit.py*"
+                                if comment_on_pr(repo_path, existing_pr["number"], comment):
+                                    print(f"  {Colors.GREEN}✓ Comment added to PR #{existing_pr['number']}{Colors.NC}")
+                                else:
+                                    print(f"  {Colors.RED}✗ Failed to comment{Colors.NC}")
+                            elif pr_action != "n":
+                                print(f"{Colors.YELLOW}Skipped.{Colors.NC}")
+                                continue
+                        if not existing_pr or pr_action == "n":
                             try:
                                 result = subprocess.run(
-                                    ["git", "branch", "-r"],
+                                    ["gh", "pr", "create",
+                                     "--title", pr_title,
+                                     "--body", pr_desc,
+                                     "--base", base_branch,
+                                     "--head", current_branch],
                                     cwd=repo_path,
                                     capture_output=True,
                                     text=True,
                                 )
-                                remote_branches = []
-                                for line in result.stdout.strip().split("\n"):
-                                    line = line.strip()
-                                    if line and "HEAD" not in line and not line.startswith("origin/HEAD"):
-                                        remote_branches.append(line)
-                                
-                                page_size = 20
-                                offset = 0
-                                while True:
-                                    display_branches = remote_branches[offset:offset + page_size]
-                                    for i, b in enumerate(display_branches):
-                                        print(f"  {offset + i + 1}) {b}")
-                                    
-                                    remaining = len(remote_branches) - offset - page_size
-                                    if remaining > 0:
-                                        print(f"  ... and {remaining} more")
-                                    
-                                    print(f"\n{Colors.CYAN}Enter branch number, name, 'more' for more, 'new' to create, or 'n' to skip: {Colors.NC}", end="")
-                                    branch_choice = input().strip()
-                                    
-                                    if branch_choice.lower() == "more":
-                                        offset += page_size
-                                        if offset >= len(remote_branches):
-                                            offset = 0
-                                        continue
-                                    break
-                                
-                                if branch_choice.lower() == "n" or not branch_choice:
-                                    print(f"{Colors.YELLOW}Skipping PR creation.{Colors.NC}")
-                                elif branch_choice.lower() == "new":
-                                    print(f"{Colors.CYAN}Enter new branch name: {Colors.NC}", end="")
-                                    new_branch = input().strip()
-                                    if new_branch:
-                                        print(f"\n{Colors.CYAN}Creating new branch {new_branch} from current HEAD...{Colors.NC}")
-                                        checkout_result = subprocess.run(
-                                            ["git", "checkout", "-b", new_branch],
-                                            cwd=repo_path,
-                                            capture_output=True,
-                                            text=True,
-                                        )
-                                        if checkout_result.returncode == 0:
-                                            print(f"{Colors.GREEN}✓ Created branch {new_branch}{Colors.NC}")
-                                            print(f"{Colors.CYAN}Pushing to remote...{Colors.NC}")
-                                            push_result = subprocess.run(
-                                                ["git", "push", "-u", "origin", new_branch],
-                                                cwd=repo_path,
-                                                capture_output=True,
-                                                text=True,
-                                            )
-                                            if push_result.returncode == 0:
-                                                print(f"{Colors.GREEN}✓ Pushed{Colors.NC}")
-                                                print(f"{Colors.CYAN}Creating PR...{Colors.NC}")
-                                                result = subprocess.run(
-                                                    ["gh", "pr", "create",
-                                                     "--title", pr_title,
-                                                     "--body", pr_desc,
-                                                     "--base", base_branch,
-                                                     "--head", new_branch],
-                                                    cwd=repo_path,
-                                                    capture_output=True,
-                                                    text=True,
-                                                )
-                                                if result.returncode == 0:
-                                                    print(f"  {Colors.GREEN}✓ PR created: {result.stdout.strip()}{Colors.NC}")
-                                                else:
-                                                    print(f"  {Colors.RED}✗ PR failed: {result.stderr.strip()}{Colors.NC}")
-                                            else:
-                                                print(f"  {Colors.RED}✗ Push failed: {push_result.stderr.strip()}{Colors.NC}")
-                                        else:
-                                            print(f"{Colors.RED}✗ Checkout failed: {checkout_result.stderr.strip()}{Colors.NC}")
-                                    else:
-                                        print(f"{Colors.YELLOW}No branch name entered.{Colors.NC}")
+                                if result.returncode == 0:
+                                    print(f"  {Colors.GREEN}✓ PR created: {result.stdout.strip()}{Colors.NC}")
                                 else:
-                                    target_branch = None
-                                    if branch_choice.isdigit():
-                                        idx = int(branch_choice) - 1
-                                        if 0 <= idx < len(remote_branches):
-                                            target_branch = remote_branches[idx]
-                                    elif not branch_choice.lower() in ("n", "new", "more"):
-                                        for rb in remote_branches:
-                                            if rb.endswith(branch_choice) or rb == f"origin/{branch_choice}":
-                                                target_branch = rb
-                                                break
-                                    if target_branch:
-                                        local_name = target_branch.replace("origin/", "")
-                                        print(f"\n{Colors.CYAN}Creating local branch {local_name} from current HEAD (with commits)...{Colors.NC}")
-                                        checkout_result = subprocess.run(
-                                            ["git", "checkout", "-b", local_name],
+                                    print(f"  {Colors.RED}✗ Failed: {result.stderr.strip()}{Colors.NC}")
+                            except FileNotFoundError:
+                                print(f"{Colors.RED}gh not found{Colors.NC}")
+                    else:
+                        print(f"{Colors.YELLOW}Currently on {base_branch} — need to switch to a feature branch.{Colors.NC}")
+                        print(f"\n{Colors.CYAN}Available remote branches:{Colors.NC}")
+                        try:
+                            result = subprocess.run(
+                                ["git", "branch", "-r"],
+                                cwd=repo_path,
+                                capture_output=True,
+                                text=True,
+                            )
+                            remote_branches = []
+                            for line in result.stdout.strip().split("\n"):
+                                line = line.strip()
+                                if line and "HEAD" not in line and not line.startswith("origin/HEAD"):
+                                    remote_branches.append(line)
+
+                            page_size = 20
+                            offset = 0
+                            while True:
+                                display_branches = remote_branches[offset:offset + page_size]
+                                for i, b in enumerate(display_branches):
+                                    print(f"  {offset + i + 1}) {b}")
+
+                                remaining = len(remote_branches) - offset - page_size
+                                if remaining > 0:
+                                    print(f"  ... and {remaining} more")
+
+                                print(f"\n{Colors.CYAN}Enter branch number, name, 'more' for more, 'new' to create, or 'n' to skip: {Colors.NC}", end="")
+                                branch_choice = input().strip()
+
+                                if branch_choice.lower() == "more":
+                                    offset += page_size
+                                    if offset >= len(remote_branches):
+                                        offset = 0
+                                    continue
+                                break
+
+                            if branch_choice.lower() == "n" or not branch_choice:
+                                print(f"{Colors.YELLOW}Skipping PR creation.{Colors.NC}")
+                            elif branch_choice.lower() == "new":
+                                print(f"{Colors.CYAN}Enter new branch name: {Colors.NC}", end="")
+                                new_branch = input().strip()
+                                if new_branch:
+                                    print(f"\n{Colors.CYAN}Creating new branch {new_branch} from current HEAD...{Colors.NC}")
+                                    checkout_result = subprocess.run(
+                                        ["git", "checkout", "-b", new_branch],
+                                        cwd=repo_path,
+                                        capture_output=True,
+                                        text=True,
+                                    )
+                                    if checkout_result.returncode == 0:
+                                        print(f"{Colors.GREEN}✓ Created branch {new_branch}{Colors.NC}")
+                                        print(f"{Colors.CYAN}Pushing to remote...{Colors.NC}")
+                                        push_result = subprocess.run(
+                                            ["git", "push", "-u", "origin", new_branch],
                                             cwd=repo_path,
                                             capture_output=True,
                                             text=True,
                                         )
-                                        if checkout_result.returncode == 0:
-                                            print(f"{Colors.GREEN}✓ Created branch {local_name}{Colors.NC}")
-                                            print(f"{Colors.CYAN}Pushing to remote...{Colors.NC}")
-                                            push_result = subprocess.run(
-                                                ["git", "push", "-u", "origin", local_name],
+                                        if push_result.returncode == 0:
+                                            print(f"{Colors.GREEN}✓ Pushed{Colors.NC}")
+                                            print(f"{Colors.CYAN}Creating PR...{Colors.NC}")
+                                            result = subprocess.run(
+                                                ["gh", "pr", "create",
+                                                 "--title", pr_title,
+                                                 "--body", pr_desc,
+                                                 "--base", base_branch,
+                                                 "--head", new_branch],
                                                 cwd=repo_path,
                                                 capture_output=True,
                                                 text=True,
                                             )
-                                            if push_result.returncode == 0:
-                                                print(f"{Colors.GREEN}✓ Pushed{Colors.NC}")
-                                                print(f"{Colors.CYAN}Creating PR...{Colors.NC}")
-                                                result = subprocess.run(
-                                                    ["gh", "pr", "create",
-                                                     "--title", pr_title,
-                                                     "--body", pr_desc,
-                                                     "--base", base_branch,
-                                                     "--head", local_name],
-                                                    cwd=repo_path,
-                                                    capture_output=True,
-                                                    text=True,
-                                                )
-                                                if result.returncode == 0:
-                                                    print(f"  {Colors.GREEN}✓ PR created: {result.stdout.strip()}{Colors.NC}")
-                                                else:
-                                                    print(f"  {Colors.RED}✗ PR failed: {result.stderr.strip()}{Colors.NC}")
+                                            if result.returncode == 0:
+                                                print(f"  {Colors.GREEN}✓ PR created: {result.stdout.strip()}{Colors.NC}")
                                             else:
-                                                print(f"  {Colors.RED}✗ Push failed: {push_result.stderr.strip()}{Colors.NC}")
+                                                print(f"  {Colors.RED}✗ PR failed: {result.stderr.strip()}{Colors.NC}")
                                         else:
-                                            print(f"{Colors.RED}✗ Checkout failed: {checkout_result.stderr.strip()}{Colors.NC}")
+                                            print(f"  {Colors.RED}✗ Push failed: {push_result.stderr.strip()}{Colors.NC}")
                                     else:
-                                        print(f"{Colors.RED}Invalid branch selection.{Colors.NC}")
-                            except Exception as e:
-                                print(f"{Colors.RED}Error listing branches: {e}{Colors.NC}")
-                    else:
-                        print(f"{Colors.YELLOW}Skipping PR creation.{Colors.NC}")
-                else:
-                    pr_output_dir = os.path.join(root_path, ".git", "ai-commit-output")
-                    os.makedirs(pr_output_dir, exist_ok=True)
-                    pr_file = os.path.join(pr_output_dir, f"pr-description-{repo_name}.md")
-                    with open(pr_file, "w") as f:
-                        f.write(f"# {pr_title}\n\n{pr_desc}")
-                    print(f"\n{Colors.GREEN}✓ PR description saved to: {pr_file}{Colors.NC}")
+                                        print(f"{Colors.RED}✗ Checkout failed: {checkout_result.stderr.strip()}{Colors.NC}")
+                                else:
+                                    print(f"{Colors.YELLOW}No branch name entered.{Colors.NC}")
+                            else:
+                                target_branch = None
+                                if branch_choice.isdigit():
+                                    idx = int(branch_choice) - 1
+                                    if 0 <= idx < len(remote_branches):
+                                        target_branch = remote_branches[idx]
+                                elif branch_choice.lower() not in ("n", "new", "more"):
+                                    for rb in remote_branches:
+                                        if rb.endswith(branch_choice) or rb == f"origin/{branch_choice}":
+                                            target_branch = rb
+                                            break
+                                if target_branch:
+                                    local_name = target_branch.replace("origin/", "")
+                                    print(f"\n{Colors.CYAN}Creating local branch {local_name} from current HEAD (with commits)...{Colors.NC}")
+                                    checkout_result = subprocess.run(
+                                        ["git", "checkout", "-b", local_name],
+                                        cwd=repo_path,
+                                        capture_output=True,
+                                        text=True,
+                                    )
+                                    if checkout_result.returncode == 0:
+                                        print(f"{Colors.GREEN}✓ Created branch {local_name}{Colors.NC}")
+                                        print(f"{Colors.CYAN}Pushing to remote...{Colors.NC}")
+                                        push_result = subprocess.run(
+                                            ["git", "push", "-u", "origin", local_name],
+                                            cwd=repo_path,
+                                            capture_output=True,
+                                            text=True,
+                                        )
+                                        if push_result.returncode == 0:
+                                            print(f"{Colors.GREEN}✓ Pushed{Colors.NC}")
+                                            print(f"{Colors.CYAN}Creating PR...{Colors.NC}")
+                                            result = subprocess.run(
+                                                ["gh", "pr", "create",
+                                                 "--title", pr_title,
+                                                 "--body", pr_desc,
+                                                 "--base", base_branch,
+                                                 "--head", local_name],
+                                                cwd=repo_path,
+                                                capture_output=True,
+                                                text=True,
+                                            )
+                                            if result.returncode == 0:
+                                                print(f"  {Colors.GREEN}✓ PR created: {result.stdout.strip()}{Colors.NC}")
+                                            else:
+                                                print(f"  {Colors.RED}✗ PR failed: {result.stderr.strip()}{Colors.NC}")
+                                        else:
+                                            print(f"  {Colors.RED}✗ Push failed: {push_result.stderr.strip()}{Colors.NC}")
+                                    else:
+                                        print(f"{Colors.RED}✗ Checkout failed: {checkout_result.stderr.strip()}{Colors.NC}")
+                                else:
+                                    print(f"{Colors.RED}Invalid branch selection.{Colors.NC}")
+                        except Exception as e:
+                            print(f"{Colors.RED}Error listing branches: {e}{Colors.NC}")
 
 
 if __name__ == "__main__":
