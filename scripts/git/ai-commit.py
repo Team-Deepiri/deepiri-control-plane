@@ -520,6 +520,19 @@ def _ollama_sampling_options(*, simple_path: bool) -> dict:
     }
 
 
+def _normalise_commit_body(body: object) -> str:
+    """Model JSON may use a string or list of bullet strings for body."""
+    if body is None:
+        return ""
+    if isinstance(body, list):
+        return "\n".join(str(x).strip() for x in body if str(x).strip())
+    return str(body)
+
+
+def _commit_body_lines(body: object) -> list[str]:
+    return _normalise_commit_body(body).splitlines()
+
+
 def _normalise_commits_from_parsed(
     parsed: dict,
     files: list[dict],
@@ -551,7 +564,7 @@ def _normalise_commits_from_parsed(
             normalised.append({
                 "description": c.get("subject") or c.get("description") or c.get("commit_message") or "Update files",
                 "subject": c.get("subject") or c.get("description") or c.get("commit_message") or "Update files",
-                "body": c.get("body") or c.get("reasoning") or "",
+                "body": _normalise_commit_body(c.get("body") or c.get("reasoning")),
                 "files": actual_files,
             })
 
@@ -913,16 +926,14 @@ async def generate_pr_description_ai(base_url: str, model: str, commits: list[di
         commit_log += "## Prior commits on this branch (from earlier pushes):\n"
         for c in prior_commits:
             commit_log += f"- {c['subject']}\n"
-            if c.get("body"):
-                for line in c["body"].splitlines():
-                    commit_log += f"  {line}\n"
+            for line in _commit_body_lines(c.get("body")):
+                commit_log += f"  {line}\n"
         commit_log += "\n## New commits in this session:\n"
     
     for c in commits:
         commit_log += f"- {c['subject']}\n"
-        if c.get("body"):
-            for line in c["body"].splitlines():
-                commit_log += f"  {line}\n"
+        for line in _commit_body_lines(c.get("body")):
+            commit_log += f"  {line}\n"
 
     system_prompt = """You are filling in a Pull Request description template. You will be given a list of commits.
 
@@ -1073,10 +1084,8 @@ def generate_pr_description(commits: list[dict]) -> str:
     commit_log = ""
     for c in commits:
         commit_log += f"- {c.get('subject', 'No description')}\n"
-        body = c.get('body', '')
-        if body:
-            for line in body.splitlines():
-                commit_log += f"  {line}\n"
+        for line in _commit_body_lines(c.get("body")):
+            commit_log += f"  {line}\n"
     
     pr_desc = f"""## Description
 
