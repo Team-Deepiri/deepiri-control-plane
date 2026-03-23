@@ -6,11 +6,11 @@ Handles: recursive repo detection, submodule support, segmented commits, interac
 
 Performance / Ollama (optional env):
   OLLAMA_KEEP_ALIVE                — keep model in VRAM between runs (default 30m)
-  OLLAMA_COMMIT_NUM_PREDICT        — max output tokens on full path (default 768)
+  OLLAMA_COMMIT_NUM_PREDICT        — max output tokens on full path (default 576)
   OLLAMA_COMMIT_NUM_PREDICT_SIMPLE — max output tokens on fast path (default 256)
   AI_COMMIT_SIMPLE_MAX_FILES       — fast path when <= N files and no conflict markers (default 5)
   AI_COMMIT_MAX_DIFF_CHARS         — diff char cap, full path (default 65536)
-  AI_COMMIT_MAX_DIFF_CHARS_SIMPLE  — diff char cap, fast path (default 4000 * num_files)
+  AI_COMMIT_MAX_DIFF_CHARS_SIMPLE  — diff char cap, fast path (default 2000 * num_files)
 
 CRITICAL: Never send num_ctx/num_batch/num_gpu in per-request Ollama options.
 Those are model-init params — changing them causes a full model reload (~30-60s).
@@ -510,9 +510,9 @@ def _ollama_sampling_options(*, simple_path: bool) -> dict:
     Let the model keep whatever context size it was loaded with.
     """
     if simple_path:
-        num_predict = int(os.getenv("OLLAMA_COMMIT_NUM_PREDICT_SIMPLE", "192"))
+        num_predict = int(os.getenv("OLLAMA_COMMIT_NUM_PREDICT_SIMPLE", "256"))
     else:
-        num_predict = int(os.getenv("OLLAMA_COMMIT_NUM_PREDICT", "512"))
+        num_predict = int(os.getenv("OLLAMA_COMMIT_NUM_PREDICT", "576"))
 
     return {
         "temperature": 0.2,
@@ -700,8 +700,8 @@ def _print_ollama_timing(done: dict, prompt_chars: int, num_response_chunks: int
 
 
 _SIMPLE_COMMIT_SYSTEM = """Git commit assistant. Output ONLY JSON, no markdown:
-{"commits":[{"subject":"verb-first ≤100chars naming real class/fn/config","body":"- exact thing: what changed","files":["exact/path/from/list"]}]}
-Rules: partition every provided file into exactly one commit; subject starts with Add/Fix/Refactor/Remove/Implement/Extract; body 2-4 bullets or omit if obvious; if changes are clearly independent (CI vs app, docs vs code) use multiple commits."""
+{"commits":[{"subject":"verb-first ≤100chars; name real class/fn/config + scope (module or area)","body":"- symbol or file: what changed and briefly why\\n- ...","files":["exact/path/from/list"]}]}
+Rules: partition every file into exactly one commit; subjects start with Add/Fix/Refactor/Remove/Implement/Extract; body 3-5 bullets for non-trivial work (2 if tiny); avoid vague one-word labels; omit body only if the subject is fully specific; split into multiple commits when concerns are independent (CI vs app, docs vs code)."""
 
 
 async def _generate_simple_commit(
@@ -760,7 +760,7 @@ async def _analyze_and_generate_commits_full(
     system_prompt = """You are a git commit assistant. Given changed files and their diff, group them into logical commits and write a specific commit message for each group.
 
 Return ONLY raw JSON, no markdown, no explanation. Schema:
-{"commits":[{"subject":"<verb-first, ≤100 chars, name real classes/methods/configs>","body":"- <thing>: what changed\n- <thing>: what changed","files":["path/a.py"]}]}
+{"commits":[{"subject":"<verb-first, ≤100 chars, name real classes/methods/configs + area/feature when helpful>","body":"- <thing>: what changed (and briefly why if non-obvious)\n- ...","files":["path/a.py"]}]}
 
 Grouping rules:
 - Every file must appear in exactly one commit
@@ -770,15 +770,15 @@ Grouping rules:
 - If the diff contains merge conflict markers or conflict resolutions, group by concern and describe how conflicts were resolved in the body
 
 Subject rules:
-- Name the actual class, method, function, or config key that changed
+- Name the actual class, method, function, or config key that changed; add scope (module/path segment) when it disambiguates
 - Start with a verb: Add, Fix, Refactor, Remove, Implement, Enforce, Extract
 - No conventional commit prefix (no "feat:", "fix:", etc.)
 - Bad: "Refactors rate limiter" — Good: "Add RateLimitMiddleware with Redis token-bucket"
 
 Body rules:
-- 2-4 bullet points, each naming an exact method/class/field and what changed
+- 3-5 bullet points for non-trivial commits (2-3 if the change is tiny); each names an exact method/class/field/path and what changed; add a short "why" when it helps reviewers
 - For conflict resolution, name files/hunks and what was kept or merged
-- Omit body if change is trivially obvious from the subject"""
+- Omit body only when the subject already states every important detail (rare)"""
 
     files_summary = "\n".join(f["file"] for f in files)
     diff_for_model = _truncate_diff_for_commit_analysis(diff_output or "")
