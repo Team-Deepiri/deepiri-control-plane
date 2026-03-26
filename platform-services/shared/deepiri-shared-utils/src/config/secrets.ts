@@ -1,6 +1,4 @@
 import { config } from 'dotenv';
-import crypto from 'crypto';
-import { secureLog } from '../secureLogger';
 
 config();
 

@@ -16,7 +16,8 @@ SERVICES=(
   engagement-service platform-analytics-service
   notification-service external-bridge-service
   challenge-service realtime-gateway
-  language-intelligence-service synapse
+  language-intelligence-service messaging-service synapse
+  # deepiri-prismpipe  # PrismPipe - Capability-Routed API Pipeline (Coming Soon)
 )
 
 echo "🛑 Stopping Infrastructure Team services..."

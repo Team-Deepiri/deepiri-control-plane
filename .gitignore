@@ -72,6 +72,7 @@ ENV/
 dist/
 build/
 *.egg
+.opencode
 
 # Development virtual environment (one level above deepiri)
 ../.dev_venv/
@@ -128,7 +129,6 @@ Thumbs.db
 # MISC
 # ========================================
 .husky
-.github
 .dockerignore
 .docker-dependency-cache.json
 *.cache
