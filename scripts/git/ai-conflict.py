@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import shutil
+from functools import lru_cache
 from typing import Optional
 
 import difflib
@@ -27,6 +28,7 @@ try:
 except ImportError:
     print("Error: httpx library required. Install with: pip install httpx")
     sys.exit(1)
+
 
 
 class Colors:
@@ -498,77 +500,135 @@ def checkout_branch(repo_path: str, branch: str) -> bool:
 
 
 def resolve_branch_ref(repo_path: str, branch: str) -> str:
-    """Resolve a branch name to a valid git ref, auto-prefixing origin/ if needed."""
-    result = subprocess.run(
-        ["git", "rev-parse", "--verify", branch],
-        cwd=repo_path, capture_output=True, text=True
-    )
-    if result.returncode == 0:
-        return branch
-    # Try origin/ prefix
-    remote_ref = f"origin/{branch}"
-    result2 = subprocess.run(
-        ["git", "rev-parse", "--verify", remote_ref],
-        cwd=repo_path, capture_output=True, text=True
-    )
-    if result2.returncode == 0:
-        return remote_ref
-    return branch  # return as-is and let git report the error
-
-
-def get_conflicting_files_between_branches(repo_path: str, head_branch: str, base_branch: str) -> list[str] | None:
-    """Get files that would actually conflict if merging head_branch into base_branch.
-    Returns None if the branch refs are invalid (can't be resolved).
-    Returns [] if branches merge cleanly.
+    """Resolve a branch name to a valid git ref.
+    Always prefers origin/<branch> (remote tracking ref, fresh after fetch)
+    over a local branch that may be stale and behind.
     """
-    def run(cmd):
-        return subprocess.run(cmd, cwd=repo_path, capture_output=True, text=True)
+    def verify(ref):
+        return subprocess.run(
+            ["git", "rev-parse", "--verify", ref],
+            cwd=repo_path, capture_output=True, text=True
+        ).returncode == 0
 
+    # Already has a remote prefix — use as-is
+    if branch.startswith("origin/") or branch.startswith("remotes/"):
+        return branch
+
+    # Prefer remote tracking ref over a potentially stale local branch
+    remote_ref = f"origin/{branch}"
+    if verify(remote_ref):
+        return remote_ref
+
+    # Fall back to local branch / tag / SHA
+    if verify(branch):
+        return branch
+
+    return branch  # let git report the error downstream
+
+
+def get_conflicting_files_between_branches(repo_path: str, head_branch: str, base_branch: str) -> dict | None:
+    """Get files that would conflict merging base_branch into head_branch.
+
+    Uses two independent methods and unions the results:
+      1. git merge-tree --write-tree  (in-memory 3-way merge, git >= 2.38)
+         Parses unmerged index entries (stage 1/2/3) for true content/submodule conflicts.
+      2. Isolated worktree + git merge  (fallback and supplement)
+         Catches submodule conflicts that merge-tree can miss (e.g. diverged but fast-forwardable).
+      3. Deletion check  (independent of both)
+         Files deleted in head_branch but still present in base_branch — GitHub flags these
+         as conflicts because the merge would silently remove them from base.
+
+    Returns None if refs are invalid.
+    Returns dict:
+      'true_conflicts' – sorted list of files needing resolution
+    """
+    def run(cmd, cwd=None):
+        return subprocess.run(cmd, cwd=cwd or repo_path, capture_output=True, text=True)
+
+    head_branch = resolve_branch_ref(repo_path, head_branch)
+    base_branch = resolve_branch_ref(repo_path, base_branch)
+
+    for ref in (head_branch, base_branch):
+        if run(["git", "rev-parse", "--verify", ref]).returncode != 0:
+            return None
+
+    conflicts: set[str] = set()
+
+    # ── Method 1: git merge-tree --write-tree (in-memory, no worktree needed) ──
+    # Unmerged index entries have the format:
+    #   <mode> <sha> <stage>\t<path>   where stage ∈ {1=ancestor, 2=ours, 3=theirs}
+    # Any path that appears at stage 1, 2, or 3 is a genuine conflict.
+    mt = run(["git", "merge-tree", "--write-tree", "--messages", head_branch, base_branch])
+    lines = (mt.stdout + mt.stderr).splitlines()
+    for line in lines:
+        # Index entries start with a 6-digit mode followed by a space
+        if len(line) > 7 and line[:6].isdigit() and line[6] == " ":
+            parts = line.split("\t", 1)
+            if len(parts) == 2:
+                path = parts[1].strip().strip('"')
+                if path:
+                    conflicts.add(path)
+        # Also capture any CONFLICT lines from the messages section
+        m = re.search(r"CONFLICT[^:]*:\s+(?:Merge conflict in\s+)?(\S+)", line)
+        if m:
+            conflicts.add(m.group(1).strip().strip('"'))
+
+    # ── Method 2: worktree merge (supplements merge-tree for submodule edge cases) ──
+    tmpdir = tempfile.mkdtemp(prefix="ai-conflict-chk-")
     try:
-        # Auto-resolve bare branch names to origin/<name> if they don't exist locally
-        head_branch = resolve_branch_ref(repo_path, head_branch)
-        base_branch = resolve_branch_ref(repo_path, base_branch)
+        if run(["git", "worktree", "add", "--detach", tmpdir, head_branch]).returncode == 0:
+            merge_out = run(["git", "merge", "--no-commit", "--no-ff", base_branch], cwd=tmpdir)
 
-        # Verify both refs exist before proceeding
-        for ref in (head_branch, base_branch):
-            check = run(["git", "rev-parse", "--verify", ref])
-            if check.returncode != 0:
-                return None  # signal invalid ref to caller
-
-        conflict_files = []
-
-        # --- Pass 1: git merge-tree for content conflicts ---
-        result = run(["git", "merge-tree", "--write-tree", base_branch, head_branch])
-        if result.returncode != 0:
-            for line in (result.stderr + result.stdout).split("\n"):
-                # Match "CONFLICT (type): Merge conflict in <path>" or "CONFLICT (type): <path> deleted/modified..."
-                # Use \S+ to capture only the path token, not the rest of the description.
+            # CONFLICT lines from merge output
+            for line in (merge_out.stdout + merge_out.stderr).splitlines():
                 m = re.search(r"CONFLICT[^:]*:\s+(?:Merge conflict in\s+)?(\S+)", line)
                 if m:
-                    f = m.group(1).strip()
-                    if f and f not in conflict_files:
-                        conflict_files.append(f)
+                    conflicts.add(m.group(1).strip().strip('"'))
 
-        # --- Pass 2: intersection-based detection (catches submodules + any merge-tree misses) ---
-        # Any file changed in BOTH branches since their merge-base is a potential conflict.
-        merge_base_result = run(["git", "merge-base", base_branch, head_branch])
-        if merge_base_result.returncode == 0:
-            merge_base = merge_base_result.stdout.strip()
-            if merge_base:
-                head_changed = set(filter(None,
-                    run(["git", "diff", "--name-only", merge_base, head_branch]).stdout.strip().split("\n")
-                ))
-                base_changed = set(filter(None,
-                    run(["git", "diff", "--name-only", merge_base, base_branch]).stdout.strip().split("\n")
-                ))
-                # Files changed in both branches = potential conflict
-                for f in sorted(head_changed & base_changed):
-                    if f not in conflict_files:
-                        conflict_files.append(f)
+            # Unmerged index entries from the worktree
+            for line in run(["git", "ls-files", "-u"], cwd=tmpdir).stdout.splitlines():
+                parts = line.split("\t", 1)
+                if len(parts) == 2:
+                    conflicts.add(parts[1].strip().strip('"'))
 
-        return conflict_files
+            # git status UU/DU/UD/AA/DD entries
+            for line in run(["git", "status", "--short"], cwd=tmpdir).stdout.splitlines():
+                if len(line) >= 3:
+                    xy, path = line[:2], line[3:].strip().strip('"')
+                    if ("U" in xy or xy in ("AA", "DD")) and path:
+                        conflicts.add(path)
     except Exception:
-        return []
+        pass
+    finally:
+        run(["git", "merge", "--abort"], cwd=tmpdir)
+        run(["git", "worktree", "remove", "--force", tmpdir])
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+    # ── Method 3: deletion conflicts ──
+    # Two sub-cases:
+    #   a) MODIFY/DELETE: deleted in head_branch AND modified in base_branch since the merge-base.
+    #      This is a genuine conflict — one side deleted, the other made changes worth preserving.
+    #      These are usually already caught by methods 1 and 2, but we add them for completeness.
+    #   b) CLEAN DELETE: deleted in head_branch, base_branch has it unchanged from the merge-base.
+    #      Git auto-resolves silently. Not a conflict — tracked separately as deletion_warnings.
+    deletion_warnings: list[str] = []
+    mb_r = run(["git", "merge-base", base_branch, head_branch])
+    if mb_r.returncode == 0:
+        mb = mb_r.stdout.strip()
+        if mb:
+            head_deleted = set(filter(None,
+                run(["git", "diff", "--name-only", "--diff-filter=D", mb, head_branch]).stdout.splitlines()))
+            base_modified = set(filter(None,
+                run(["git", "diff", "--name-only", mb, base_branch]).stdout.splitlines()))
+            for f in sorted(head_deleted):
+                if run(["git", "cat-file", "-e", f"{base_branch}:{f}"]).returncode != 0:
+                    continue  # already gone in base too
+                if f in base_modified:
+                    conflicts.add(f)   # modify/delete → true conflict
+                elif f not in conflicts:
+                    deletion_warnings.append(f)   # clean delete → informational
+
+    return {"true_conflicts": sorted(conflicts), "deletion_warnings": deletion_warnings}
 
 
 def get_file_diff_between_branches(repo_path: str, branch1: str, branch2: str) -> dict:
@@ -655,6 +715,7 @@ def get_branch_file_content(repo_path: str, branch: str, file_path: str) -> str:
     return ""
 
 
+@lru_cache(maxsize=64)
 def get_merge_base(repo_path: str, branch1: str, branch2: str) -> str:
     try:
         result = subprocess.run(
@@ -808,43 +869,70 @@ def review_and_decide(result: dict) -> str:
             return decision
 
 
-async def send_to_ollama(base_url: str, model: str, prompt: str, system: str = "", silent: bool = False) -> str:
+_http_client: Optional[httpx.AsyncClient] = None
+
+
+def _get_http_client() -> httpx.AsyncClient:
+    global _http_client
+    if _http_client is None or _http_client.is_closed:
+        _http_client = httpx.AsyncClient(
+            timeout=180.0,
+            limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
+        )
+    return _http_client
+
+
+async def send_to_ollama(
+    base_url: str,
+    model: str,
+    prompt: str,
+    system: str = "",
+    *,
+    silent: bool = False,
+    options: dict | None = None,
+) -> str:
     messages = []
     if system:
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
 
+    # Smaller num_ctx than the model default keeps KV-cache allocation down — large defaults make
+    # local Ollama feel "stuck" for tens of seconds before the first token. Override via OLLAMA_NUM_CTX.
+    default_options = {
+        "temperature": 0.1,
+        "top_k": 20,
+        "top_p": 0.5,
+        "num_ctx": int(os.getenv("OLLAMA_NUM_CTX", "4096")),
+        "num_predict": int(os.getenv("OLLAMA_NUM_PREDICT", "2000")),
+    }
+    if options:
+        default_options.update(options)
+
     payload = {
         "model": model,
         "messages": messages,
         "stream": True,
-        "options": {
-            "temperature": 0.1,
-            "top_k": 20,
-            "top_p": 0.5,
-            "num_ctx": int(os.getenv("OLLAMA_NUM_CTX", "6144")),
-            "num_predict": int(os.getenv("OLLAMA_NUM_PREDICT", "2000")),
-        },
+        "options": default_options,
     }
 
     try:
         if not silent:
             print(f"{Colors.GRAY}Resolving...{Colors.NC}")
         tokens: list[str] = []
-        async with httpx.AsyncClient(timeout=180.0) as client:
-            async with client.stream("POST", f"{base_url}/api/chat", json=payload) as response:
-                response.raise_for_status()
-                async for line in response.aiter_lines():
-                    if not line:
-                        continue
-                    chunk = json.loads(line)
-                    token = chunk.get("message", {}).get("content", "")
-                    if token:
-                        if not silent:
-                            print(token, end="", flush=True)
-                        tokens.append(token)
-                    if chunk.get("done"):
-                        break
+        client = _get_http_client()
+        async with client.stream("POST", f"{base_url}/api/chat", json=payload) as response:
+            response.raise_for_status()
+            async for line in response.aiter_lines():
+                if not line:
+                    continue
+                chunk = json.loads(line)
+                token = chunk.get("message", {}).get("content", "")
+                if token:
+                    if not silent:
+                        print(token, end="", flush=True)
+                    tokens.append(token)
+                if chunk.get("done"):
+                    break
         if not silent:
             print()
         return "".join(tokens)
@@ -855,13 +943,99 @@ async def send_to_ollama(base_url: str, model: str, prompt: str, system: str = "
 
 async def get_ollama_models(base_url: str) -> list:
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(f"{base_url}/api/tags")
-            response.raise_for_status()
-            data = response.json()
-            return [m["name"] for m in data.get("models", [])]
+        client = _get_http_client()
+        response = await client.get(f"{base_url}/api/tags")
+        response.raise_for_status()
+        data = response.json()
+        return [m["name"] for m in data.get("models", [])]
     except Exception:
         return []
+
+
+def _build_file_context(file_path: str) -> str:
+    """Return a natural-language description of what this file is and how to treat it when merging."""
+    basename = os.path.basename(file_path)
+    ext = os.path.splitext(file_path)[1].lower()
+
+    # Lockfiles — machine-generated, never hand-merge
+    if basename in ("package-lock.json", "yarn.lock", "pnpm-lock.yaml",
+                    "poetry.lock", "Pipfile.lock", "Cargo.lock", "composer.lock",
+                    "Gemfile.lock", "go.sum"):
+        return (
+            f"{basename} is a machine-generated lockfile. "
+            "NEVER merge lockfile content manually — it will corrupt the dependency graph. "
+            "Output ONLY the incoming (base_branch) version exactly as-is. "
+            "The lockfile will be regenerated correctly after the manifest is merged."
+        )
+
+    # Dependency manifests
+    if basename in ("package.json", "pyproject.toml", "requirements.txt",
+                    "Cargo.toml", "go.mod", "composer.json", "Gemfile",
+                    "build.gradle", "pom.xml", "*.csproj"):
+        return (
+            f"{basename} is a dependency manifest. "
+            "Apply your knowledge of this format's schema and version resolution rules. "
+            "Include dependencies and scripts from BOTH branches; resolve version conflicts "
+            "by keeping the higher compatible version. Output must be valid and parseable."
+        )
+
+    # Git config files
+    if basename == ".gitmodules" or basename == ".gitattributes":
+        return (
+            f"{basename} is a Git configuration file. "
+            "Merge all entries from both branches. "
+            "For submodule refs, prefer the incoming branch's pointer. "
+            "Output must be a valid Git config format."
+        )
+
+    # CI / infrastructure as code
+    if basename in ("Dockerfile", "docker-compose.yml", "docker-compose.yaml"):
+        return (
+            f"{basename} is a container configuration file. "
+            "Apply your knowledge of Docker/Compose syntax. "
+            "Merge environment variables, ports, volumes, and services from both branches. "
+            "Output must be valid Dockerfile or Compose YAML."
+        )
+    if ext in (".tf", ".tfvars"):
+        return (
+            f"{basename} is a Terraform infrastructure file. "
+            "Merge resource blocks and variable definitions from both branches. "
+            "Preserve all resource arguments; never silently drop attributes. "
+            "Output must be valid HCL."
+        )
+
+    # Generic dispatch by extension — tell Ollama the file type and trust its knowledge
+    ext_descriptions = {
+        ".ts": "TypeScript", ".tsx": "TypeScript React", ".js": "JavaScript",
+        ".jsx": "JavaScript React", ".mjs": "ES Module JavaScript",
+        ".py": "Python", ".rb": "Ruby", ".go": "Go", ".rs": "Rust",
+        ".java": "Java", ".kt": "Kotlin", ".cs": "C#", ".cpp": "C++", ".c": "C",
+        ".swift": "Swift", ".php": "PHP", ".scala": "Scala",
+        ".yaml": "YAML", ".yml": "YAML",
+        ".json": "JSON", ".jsonc": "JSON with Comments",
+        ".toml": "TOML", ".ini": "INI config", ".env": "environment variables file",
+        ".md": "Markdown", ".mdx": "MDX",
+        ".sh": "shell script", ".bash": "Bash script", ".zsh": "Zsh script",
+        ".sql": "SQL", ".graphql": "GraphQL schema", ".proto": "Protocol Buffers",
+        ".xml": "XML", ".html": "HTML", ".css": "CSS", ".scss": "SCSS", ".sass": "Sass",
+        ".prisma": "Prisma schema",
+    }
+    lang = ext_descriptions.get(ext)
+    if lang:
+        return (
+            f"{basename} is a {lang} file. "
+            f"Apply your expert knowledge of {lang} syntax, semantics, and best practices. "
+            "Keep all imports, exports, type definitions, and functionality from both branches. "
+            f"Output must be syntactically valid {lang} with no merge artifacts."
+        )
+
+    # Unknown — still tell Ollama the filename so it can infer
+    return (
+        f"{basename} is a {'configuration' if '.' not in basename or ext == '' else ext[1:].upper()} file. "
+        "Apply your knowledge of this file format's structure and conventions. "
+        "Keep all meaningful content from both branches. "
+        "Output must be correctly formatted with no conflict markers."
+    )
 
 
 async def resolve_file_with_context(
@@ -874,40 +1048,75 @@ async def resolve_file_with_context(
     explanation_mode: bool = False,
     silent: bool = False,
 ) -> dict:
-    merge_base = get_merge_base(repo_path, head_branch, base_branch)
-    
-    base_content = get_branch_file_content(repo_path, merge_base, file_path) if merge_base else ""
-    head_content = get_branch_file_content(repo_path, head_branch, file_path)
-    base_head_content = get_branch_file_content(repo_path, base_branch, file_path)
-    
-    diff_hunks = get_file_diff_hunks(repo_path, base_branch, head_branch, file_path)
-    
-    explanation_instruction = ""
-    if explanation_mode:
-        explanation_instruction = f"""
+    _LOCKFILES = frozenset({
+        "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
+        "poetry.lock", "Pipfile.lock", "Cargo.lock", "composer.lock",
+        "Gemfile.lock", "go.sum",
+    })
+    _MAX_CONTENT_LINES = 100
 
-After the resolved file content, append exactly this separator on its own line:
-<<<EXPLANATION>>>
-Then provide a brief explanation (2-3 sentences):
-1. What was the conflict about?
-2. Why did you choose the solution you did?
-3. What best practices guided your decision?"""
+    # Parallelise all independent git calls — none of head/base_branch/diff depend on merge_base
+    head_task        = asyncio.to_thread(get_branch_file_content, repo_path, head_branch, file_path)
+    base_branch_task = asyncio.to_thread(get_branch_file_content, repo_path, base_branch, file_path)
+    diff_task        = asyncio.to_thread(get_file_diff_hunks, repo_path, base_branch, head_branch, file_path)
+    merge_base_task  = asyncio.to_thread(get_merge_base, repo_path, head_branch, base_branch)
 
-    system_prompt = f"""You are an expert software engineer resolving git merge conflicts.
-You have deep knowledge of software engineering best practices, design patterns, and clean code.
+    head_content, base_head_content, diff_hunks, merge_base = await asyncio.gather(
+        head_task, base_branch_task, diff_task, merge_base_task
+    )
 
-When resolving conflicts:
-1. Keep BOTH changes if they're in different functions/methods/lines
-2. If truly incompatible, choose the better implementation considering:
-   - Correctness and bug prevention
-   - Performance and efficiency
-   - Readability and maintainability
-   - Following language/framework conventions
-   - Security best practices
-3. Preserve important comments
-4. Use consistent code style with the existing file
-5. Output ONLY the resolved file content - no markdown, no explanations (unless explanation mode)
-6. If uncertain, combine both approaches where safe to do so"""
+    # base_content depends on merge_base — fetch now that we have it
+    base_content = await asyncio.to_thread(
+        get_branch_file_content, repo_path, merge_base, file_path
+    ) if merge_base else ""
+
+    # Short-circuit: lockfiles are machine-generated — always take incoming version, no LLM needed
+    if os.path.basename(file_path) in _LOCKFILES:
+        return {
+            "content": base_head_content,
+            "explanation": "Lockfile: took the incoming branch version unchanged (never hand-merge lockfiles).",
+            "base": base_content,
+            "head": head_content,
+            "base_branch_version": base_head_content,
+            "diff_hunks": diff_hunks,
+        }
+
+    def _maybe_trim(text: str, label: str) -> str:
+        lines = text.splitlines()
+        if len(lines) <= _MAX_CONTENT_LINES:
+            return text
+        # For large files, keep first and last 30 lines as structural anchors + rely on diff hunks
+        head_lines = "\n".join(lines[:30])
+        tail_lines = "\n".join(lines[-30:])
+        return (
+            f"{head_lines}\n\n"
+            f"... [{len(lines) - 60} lines omitted — see CHANGES SUMMARY for the relevant diff hunks] ...\n\n"
+            f"{tail_lines}"
+        )
+
+    file_context = _build_file_context(file_path)
+
+    # Estimate how large the prompt will be and scale num_ctx accordingly
+    prompt_content_len = sum(len(s) for s in (base_content, base_head_content, head_content, diff_hunks or "") if s)
+    estimated_tokens = prompt_content_len // 4 + 800  # ~4 chars/token + system prompt overhead
+    num_ctx = max(4096, min(int(estimated_tokens * 1.5), 16384))
+    num_predict = max(512, min(int(max(len(head_content or ""), len(base_head_content or "")) // 3) + 256, 4096))
+
+    system_prompt = f"""You are a senior systems engineer resolving a Git merge conflict.
+
+FILE CONTEXT: {file_context}
+
+BASE = common ancestor (how the file looked before both branches diverged).
+HEAD = current branch (incoming changes being merged in).
+INCOMING = target branch (where we're merging into).
+
+RULES:
+- Output ONLY the final merged file content — no commentary, no conflict markers, no markdown fences
+- Use BASE to understand the original intent; do not just pick one side blindly
+- Preserve all functionality, imports, error handling, and configuration from both branches
+- Apply the file format's validity constraints (syntax, schema, structure)
+- Never drop code unless it is genuinely superseded by the other branch
+{"" if not explanation_mode else chr(10) + "After the file content, append <<<EXPLANATION>>> on its own line, then 2-3 sentences explaining the resolution."}"""
 
     user_prompt = f"""Resolve a merge conflict between two branches.
 
@@ -919,25 +1128,28 @@ BRANCH INFO:
 
 BASE VERSION (common ancestor - how the file started):
 ```
-{base_content or "(file did not exist in base)"}
+{_maybe_trim(base_content, "BASE") if base_content else "(file did not exist in base)"}
 ```
 
 BASE_BRANCH VERSION ({base_branch}):
 ```
-{base_head_content or "(file does not exist in this branch)"}
+{_maybe_trim(base_head_content, "BASE_BRANCH") if base_head_content else "(file does not exist in this branch)"}
 ```
 
 HEAD_BRANCH VERSION ({head_branch} - incoming changes):
 ```
-{head_content or "(file does not exist in this branch)"}
+{_maybe_trim(head_content, "HEAD") if head_content else "(file does not exist in this branch)"}
 ```
 
 CHANGES SUMMARY (diff between base and head):
-{diff_hunks[:3000] if diff_hunks else "(no hunks)"}
-{explanation_instruction}
-Resolve this conflict and output ONLY the final resolved file content."""
+{diff_hunks[:4000] if diff_hunks else "(no hunks)"}
 
-    response = await send_to_ollama(base_url, model, user_prompt, system=system_prompt, silent=silent)
+Resolve this conflict and output ONLY the final merged file content."""
+
+    response = await send_to_ollama(
+        base_url, model, user_prompt, system=system_prompt, silent=silent,
+        options={"num_ctx": num_ctx, "num_predict": num_predict},
+    )
 
     explanation = ""
     if explanation_mode and "<<<EXPLANATION>>>" in response:
@@ -958,22 +1170,6 @@ Resolve this conflict and output ONLY the final resolved file content."""
         "base_branch_version": base_head_content,
         "diff_hunks": diff_hunks
     }
-
-
-async def research_best_practices(base_url: str, model: str, file_path: str, language: str) -> str:
-    system_prompt = """You are an expert software engineer. Research and provide best practices for the given code context. 
-Focus on: security, performance, maintainability, error handling, and industry standards.
-Be concise - 3-5 key recommendations only."""
-
-    user_prompt = f"""What are the best practices for this type of file: {file_path}
-Language/Framework context: {language}
-
-Provide 3-5 specific best practice recommendations relevant to resolving conflicts in this file."""
-
-    try:
-        return await send_to_ollama(base_url, model, user_prompt, system=system_prompt)
-    except Exception:
-        return "Could not research best practices."
 
 
 async def main():
@@ -1272,48 +1468,106 @@ async def handle_resolve_conflicts_between_branches(repo_path: str, repo_name: s
     if not head_branch:
         head_branch = current_branch
 
-    print(f"\n{Colors.CYAN}BASE branch (target - typically main/develop){Colors.NC}")
-    print(f"{Colors.GRAY}  [e.g., origin/main, origin/dev]{Colors.NC}")
-    base_branch = input(f"{Colors.CYAN}> {Colors.NC}").strip()
+    def get_sha(ref):
+        r = subprocess.run(["git", "rev-parse", "--short", ref], cwd=repo_path, capture_output=True, text=True)
+        return r.stdout.strip() if r.returncode == 0 else "unknown"
 
-    if not base_branch:
-        return
+    # BASE branch input with retry — bad names re-prompt instead of dropping to the main menu
+    base_branch = None
+    preview_conflicts = None
+    while True:
+        if base_branch is None:
+            print(f"\n{Colors.CYAN}BASE branch (target - typically main/develop){Colors.NC}")
+            print(f"{Colors.GRAY}  [e.g., origin/dev, origin/main  |  blank to cancel]{Colors.NC}")
+            val = input(f"{Colors.CYAN}> {Colors.NC}").strip()
+            if not val:
+                return
+            base_branch = val
 
-    print(f"\n{Colors.CYAN}Fetching latest remote info...{Colors.NC}")
-    fetch_all(repo_path)
+        # Fetch both branches specifically
+        print(f"\n{Colors.CYAN}Fetching latest remote refs...{Colors.NC}")
+        for ref in [head_branch, base_branch]:
+            branch_name = ref.replace("origin/", "")
+            r = subprocess.run(["git", "fetch", "origin", branch_name], cwd=repo_path, capture_output=True, text=True)
+            if r.returncode == 0:
+                print(f"  {Colors.GREEN}fetched{Colors.NC} origin/{branch_name}")
+            else:
+                print(f"  {Colors.YELLOW}could not fetch origin/{branch_name} — using local cache{Colors.NC}")
 
-    print(f"\n{Colors.CYAN}Checking for conflicts between {Colors.BLUE}{head_branch}{Colors.CYAN} and {Colors.GREEN}{base_branch}{Colors.CYAN}...{Colors.NC}")
+        resolved_head = f"origin/{head_branch.replace('origin/', '')}"
+        resolved_base = base_branch if base_branch.startswith("origin/") else f"origin/{base_branch}"
+        print(f"  {Colors.BLUE}{resolved_head}{Colors.NC} @ {Colors.GRAY}{get_sha(resolved_head)}{Colors.NC}")
+        print(f"  {Colors.GREEN}{base_branch}{Colors.NC} @ {Colors.GRAY}{get_sha(resolved_base)}{Colors.NC}")
 
-    preview_conflicts = get_conflicting_files_between_branches(repo_path, head_branch, base_branch)
+        print(f"\n{Colors.CYAN}Checking for conflicts between {Colors.BLUE}{head_branch}{Colors.CYAN} and {Colors.GREEN}{base_branch}{Colors.CYAN}...{Colors.NC}")
+        preview_conflicts = get_conflicting_files_between_branches(repo_path, head_branch, base_branch)
 
-    if preview_conflicts is None:
-        print(f"{Colors.RED}Could not resolve one or both branch names. Check spelling and try again.{Colors.NC}")
-        print(f"{Colors.GRAY}Tip: use 'origin/<branch>' for remote branches, e.g. origin/senay-add-messaging-route{Colors.NC}")
-        return
+        if preview_conflicts is None:
+            print(f"{Colors.RED}Branch '{base_branch}' not found. Try again (blank to cancel):{Colors.NC}")
+            base_branch = None
+            continue
 
-    if not preview_conflicts:
+        break
+
+    true_conflicts    = preview_conflicts["true_conflicts"]
+    deletion_warnings = preview_conflicts.get("deletion_warnings", [])
+
+    if not true_conflicts and not deletion_warnings:
         print(f"{Colors.GREEN}No conflicts - these branches merge cleanly!{Colors.NC}")
         return
 
-    print(f"\n{Colors.RED}{len(preview_conflicts)} file(s) would conflict:{Colors.NC}")
-    for f in preview_conflicts[:20]:
-        print(f"  {Colors.RED}!{Colors.NC} {f}")
-    if len(preview_conflicts) > 20:
-        print(f"  {Colors.GRAY}... and {len(preview_conflicts) - 20} more{Colors.NC}")
+    if true_conflicts:
+        print(f"\n{Colors.RED}{len(true_conflicts)} file(s) need conflict resolution:{Colors.NC}")
+        for f in true_conflicts:
+            print(f"  {Colors.RED}x{Colors.NC} {f}")
+    else:
+        print(f"\n{Colors.GREEN}No hard conflicts - git can auto-merge everything.{Colors.NC}")
 
-    print(f"\n{Colors.CYAN}This will merge {base_branch} into {current_branch} with AI conflict resolution{Colors.NC}")
-    print(f"{Colors.CYAN}[y] Proceed  [n] Cancel: {Colors.NC}", end="")
-    if input().strip().lower() != "y":
-        print("Cancelled")
-        return
-    
+    if deletion_warnings:
+        print(f"\n{Colors.YELLOW}{len(deletion_warnings)} file(s) deleted in {head_branch} will stay deleted after merge  "
+              f"[d to inspect]{Colors.NC}")
+
+    print(f"\n{Colors.CYAN}This will merge {base_branch} into {head_branch} with AI conflict resolution{Colors.NC}")
+
+    prompt = f"{Colors.CYAN}[y] Proceed  [n] Cancel"
+    if deletion_warnings:
+        prompt += "  [d] Inspect deletions"
+    prompt += f": {Colors.NC}"
+
+    while True:
+        print(prompt, end="")
+        choice = input().strip().lower()
+        if choice == "d" and deletion_warnings:
+            print(f"\n{Colors.YELLOW}Files that will be deleted from {base_branch}:{Colors.NC}")
+            for f in deletion_warnings:
+                print(f"  {Colors.YELLOW}-{Colors.NC} {f}")
+            print()
+        elif choice == "y":
+            break
+        else:
+            print("Cancelled")
+            return
     has_changes = has_uncommitted_changes(repo_path)
     if has_changes:
         print(f"{Colors.YELLOW}Stashing uncommitted changes...{Colors.NC}")
         subprocess.run(["git", "stash"], cwd=repo_path, capture_output=True)
-    
 
-    print(f"{Colors.CYAN}Starting merge of {base_branch} into {current_branch}...{Colors.NC}")
+    # Checkout the head branch if we're not already on it
+    if head_branch != current_branch:
+        print(f"{Colors.CYAN}Checking out {head_branch}...{Colors.NC}")
+        co = subprocess.run(
+            ["git", "checkout", head_branch],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+        )
+        if co.returncode != 0:
+            print(f"{Colors.RED}Failed to checkout {head_branch}: {co.stderr.strip()}{Colors.NC}")
+            if has_changes:
+                subprocess.run(["git", "stash", "pop"], cwd=repo_path, capture_output=True)
+            return
+
+    print(f"{Colors.CYAN}Starting merge of {base_branch} into {head_branch}...{Colors.NC}")
     subprocess.run(
         ["git", "merge", "--no-commit", "--no-ff", base_branch],
         cwd=repo_path,
@@ -1444,8 +1698,15 @@ async def handle_resolve_conflicts_between_branches(repo_path: str, repo_name: s
             decision = "y"
 
         if decision == "y":
+            # Check resolved content doesn't still have conflict markers
+            content = result["content"]
+            if any(m in content for m in ("<<<<<<< ", "======= ", ">>>>>>> ")):
+                print(f"  {Colors.RED}AI left conflict markers in output — skipping (use [e] to fix manually){Colors.NC}")
+                skipped += 1
+                continue
             with open(full_path, "w") as f:
-                f.write(result["content"])
+                f.write(content)
+            subprocess.run(["git", "add", file_path], cwd=repo_path, capture_output=True)
             resolved += 1
 
     print(f"\n{Colors.CYAN}{'='*60}{Colors.NC}")
@@ -1455,12 +1716,29 @@ async def handle_resolve_conflicts_between_branches(repo_path: str, repo_name: s
         print(f"  Skipped: {skipped}")
     print(f"{Colors.CYAN}{'='*60}{Colors.NC}")
 
+    # Pop stash before committing so stash-pop conflicts surface cleanly
+    if has_changes:
+        pop = subprocess.run(["git", "stash", "pop"], cwd=repo_path, capture_output=True, text=True)
+        if pop.returncode != 0:
+            stash_conflicts = get_conflict_files(repo_path)
+            if stash_conflicts:
+                print(f"\n{Colors.YELLOW}Stash pop created {len(stash_conflicts)} conflict(s) — resolve before committing:{Colors.NC}")
+                for f in stash_conflicts:
+                    print(f"  {Colors.YELLOW}!{Colors.NC} {f}")
+                return
+
+    # Final check — refuse to commit if any UU files remain
+    still_conflicted = get_conflict_files(repo_path)
+    if still_conflicted:
+        print(f"\n{Colors.RED}{len(still_conflicted)} file(s) still have conflicts — commit blocked:{Colors.NC}")
+        for f in still_conflicted:
+            print(f"  {Colors.RED}x{Colors.NC} {f}")
+        return
+
     if resolved > 0:
-        subprocess.run(["git", "add", "-A"], cwd=repo_path, capture_output=True)
-        
         print(f"\n{Colors.CYAN}[c] Commit changes  [p] Commit & push  [q] Just finish: {Colors.NC}", end="")
         action = input().strip().lower()
-        
+
         if action == "c" or action == "p":
             result = subprocess.run(
                 ["git", "commit", "--no-edit"],
@@ -1470,23 +1748,20 @@ async def handle_resolve_conflicts_between_branches(repo_path: str, repo_name: s
             )
             if result.returncode == 0:
                 print(f"{Colors.GREEN}Committed!{Colors.NC}")
-                
+
                 if action == "p":
                     result = subprocess.run(
-                        ["git", "push", "origin", current_branch],
+                        ["git", "push", "origin", head_branch],
                         cwd=repo_path,
                         capture_output=True,
                         text=True,
                     )
                     if result.returncode == 0:
-                        print(f"{Colors.GREEN}Pushed to origin/{current_branch}{Colors.NC}")
+                        print(f"{Colors.GREEN}Pushed to origin/{head_branch}{Colors.NC}")
                     else:
                         print(f"{Colors.RED}Push failed: {result.stderr}{Colors.NC}")
             else:
                 print(f"{Colors.RED}Commit failed: {result.stderr}{Colors.NC}")
-    
-    if has_changes:
-        subprocess.run(["git", "stash", "pop"], cwd=repo_path, capture_output=True)
 
 
 async def handle_merge_flow(repo_path: str, repo_name: str, ollama_url: str, root_path: str):
@@ -1553,7 +1828,14 @@ async def handle_merge_flow(repo_path: str, repo_name: str, ollama_url: str, roo
                 print(f"{Colors.RED}Push failed{Colors.NC}")
     
     if has_changes:
-        subprocess.run(["git", "stash", "pop"], cwd=repo_path, capture_output=True)
+        pop = subprocess.run(["git", "stash", "pop"], cwd=repo_path, capture_output=True, text=True)
+        if pop.returncode != 0:
+            stash_conflicts = get_conflict_files(repo_path)
+            if stash_conflicts:
+                print(f"\n{Colors.YELLOW}Stash pop created {len(stash_conflicts)} conflict(s) in files you had open:{Colors.NC}")
+                for f in stash_conflicts:
+                    print(f"  {Colors.YELLOW}!{Colors.NC} {f}")
+                print(f"{Colors.GRAY}Tip: use [r] Resolve conflicts from the main menu to fix these.{Colors.NC}")
 
 
 async def resolve_merge_conflicts(
@@ -1561,14 +1843,19 @@ async def resolve_merge_conflicts(
     current_branch: str = None, incoming_branch: str = None
 ):
     current_branch = current_branch or get_current_branch(repo_path)
-    
+
     in_merge = os.path.isfile(os.path.join(repo_path, ".git", "MERGE_HEAD"))
     if in_merge and not incoming_branch:
         with open(os.path.join(repo_path, ".git", "MERGE_HEAD"), "r") as f:
             incoming_branch = f.read().strip()
     elif not incoming_branch:
-        print(f"{Colors.YELLOW}Could not determine incoming branch{Colors.NC}")
-        return
+        # No active merge (e.g. stash pop left conflicts after merge was committed).
+        # Use ORIG_HEAD as the "other side" reference, falling back to HEAD~1.
+        orig = subprocess.run(
+            ["git", "rev-parse", "--verify", "ORIG_HEAD"],
+            cwd=repo_path, capture_output=True, text=True
+        )
+        incoming_branch = orig.stdout.strip() if orig.returncode == 0 else "HEAD~1"
     
     print(Hints.RESOLVE)
     
