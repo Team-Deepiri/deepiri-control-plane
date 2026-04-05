@@ -40,11 +40,10 @@ Runs one analysis job per coding language, in parallel(independently, at the sam
 ### Checkout step
 ```yaml
 with:
-  submodules: recursive
   fetch-depth: 0
 ```
-- `submodules: recursive` checks out nested submodules too.
 - `fetch-depth: 0` keeps full git history (safe default for analysis and troubleshooting).
+- Submodules are **not** checked out. Each submodule will have its own CodeQL workflow in its own `.github/workflows/` folder for independent scanning.
 
 ### Initialize CodeQL
 ```yaml
