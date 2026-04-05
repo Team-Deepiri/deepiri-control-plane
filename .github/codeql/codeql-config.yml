@@ -1,15 +1,7 @@
 name: deepiri-platform-codeql-config
 
-# Limit scan scope for faster, more focused analysis.
-# Add/remove roots as the platform as needed.
-paths:
-  - deepiri-core-api/src
-  - deepiri-web-frontend/src
-  - deepiri-modelkit/src
-  - diri-helox
-  - diri-cyrex
-  - scripts
-  - platform-services
+# Do not hardcode submodule paths here unless submodules are checked out in CI.
+# Let CodeQL scan checked-out repository files, while excluding noisy artifacts below.
 
 # Skip auto generated, and environment files.
 paths-ignore:
@@ -17,8 +9,17 @@ paths-ignore:
   - '**/.next/**'
   - '**/dist/**'
   - '**/build/**'
+  - '**/logs/**'
+  - '**/tmp/**'
+  - '**/temp/**'
+  - '**/docs/**'
+  - '**/notebooks/**'
   - '**/.venv/**'
   - '**/venv/**'
+  - '**/.cache/**'
+  - '**/.ruff_cache/**'
+  - '**/.tox/**'
+  - '**/.eggs/**'
   - '**/__pycache__/**'
   - '**/.pytest_cache/**'
   - '**/.mypy_cache/**'

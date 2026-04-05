@@ -14,13 +14,15 @@ This folder contains the CodeQL configuration for repository-level security scan
 ### `name: CodeQL`
 The display name in the Actions tab.
 
-### `on.push.branches`
+### `on.pull_request.branches` and `on.push.branches`
 ```yaml
 on:
+  pull_request:
+    branches: [main, dev]
   push:
     branches: [main, dev]
 ```
-Runs scans only when code is pushed to `main` or `dev`.
+Runs scans when PRs target `main` or `dev`, and when commits are pushed to `main` or `dev`.
 
 ### `permissions`
 ```yaml
@@ -35,7 +37,7 @@ Uses least-privilege permissions. `security-events: write` is required so CodeQL
 ```yaml
 language: [javascript-typescript, python]
 ```
-Runs one analysis job per coding language, in parallel(independently, at the same time).
+Runs one analysis job per coding language in parallel.
 
 ### Checkout step
 ```yaml
@@ -43,19 +45,13 @@ with:
   fetch-depth: 0
 ```
 - `fetch-depth: 0` keeps full git history (safe default for analysis and troubleshooting).
-- Submodules are **not** checked out. Each submodule will have its own CodeQL workflow in its own `.github/workflows/` folder for independent scanning.
+- Submodules are not checked out. Each submodule should have its own CodeQL workflow in its own `.github/workflows/` folder.
 
 ### Initialize CodeQL
 ```yaml
 uses: github/codeql-action/init@v3
 ```
 Starts the CodeQL engine and loads `.github/codeql/codeql-config.yml`.
-
-### Autobuild
-```yaml
-uses: github/codeql-action/autobuild@v3
-```
-Attempts automatic build/setup for compiled projects.
 
 ### Analyze
 ```yaml
@@ -66,33 +62,27 @@ Executes queries and uploads results to GitHub Security.
 ## Config breakdown (`.github/codeql/codeql-config.yml`)
 
 ### `paths`
-Folders that are included in scanning.
+Optional include list. If omitted, CodeQL scans checked-out repository files (except ignored paths).
 
 ### `paths-ignore`
-Generated, vendored, and environment files that are excluded to reduce noise and run time.
+Generated, vendored, docs/notebooks, and environment files that are excluded to reduce noise and run time.
 
 ## Best practices
 
-1. Keep trigger scope intentional:
-   - Use branch filters (`main`, `dev`) to control cost and noise.
+1. Keep trigger scope intentional.
+   Use branch filters (`main`, `dev`) to control cost and noise.
+2. Keep language list explicit.
+   Only include languages with meaningful source code.
+3. Keep `paths` focused when used.
+   Include actively maintained production code first.
+4. Exclude generated/vendor artifacts.
+   Keep `node_modules`, build outputs, logs, temporary folders, docs/notebooks, caches, and minified files in `paths-ignore`.
+5. Pin to stable major action versions.
+   `@v3` is the current stable major for CodeQL actions.
+6. Review alerts regularly.
+   Triage high/critical findings first and suppress only with documented reasoning.
 
-2. Keep language list explicit:
-   - Only include languages with meaningful source code.
-
-3. Keep `paths` focused:
-   - Include actively maintained production code first.
-
-4. Exclude generated/vendor artifacts:
-   - Keep `node_modules`, build outputs, caches, and minified files in `paths-ignore`.
-
-5. Pin to stable major action versions:
-   - `@v3` is the current stable major for CodeQL actions.
-
-6. Review alerts regularly:
-   - Triage high/critical findings first and suppress only with documented reasoning.
-
-## How to do maintenece
-As more code and files are added it is necessary to update the codeql.yml and codeql-config.yml as needed. Below are common examples.
+## Maintenance examples
 
 ### Add a new language
 Edit matrix in `.github/workflows/codeql.yml`:
@@ -100,8 +90,15 @@ Edit matrix in `.github/workflows/codeql.yml`:
 language: [javascript-typescript, python, go]
 ```
 
-### Include a new top-level package
-Add it in `.github/codeql/codeql-config.yml` under `paths`.
+### Include only specific top-level packages
+Add explicit `paths` in `.github/codeql/codeql-config.yml` only for directories that exist in the current checkout.
+
+Example:
+```yaml
+paths:
+  - scripts
+  - src
+```
 
 ### Exclude another generated folder
 Add a glob to `paths-ignore`, for example:
