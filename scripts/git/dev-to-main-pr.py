@@ -56,6 +56,7 @@ DEEPIRI_REPOS = [
     "deepiri-sorge",
     "diri-agent-toolbox",
     "deepiri-pkg-version-manager",
+    "deepiri-shared-utils"
 ]
 
 
