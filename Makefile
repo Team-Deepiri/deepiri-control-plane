@@ -6,10 +6,11 @@
 RTG_SUGAR_COMPOSE_FILE := docker-compose.rtg-sugar-glider.local.yml
 RTG_LEGACY_COMPOSE_FILE := docker-compose.rtg-sidecar.local.yml
 RTG_COMPOSE_FILE ?= $(if $(wildcard $(RTG_SUGAR_COMPOSE_FILE)),$(RTG_SUGAR_COMPOSE_FILE),$(RTG_LEGACY_COMPOSE_FILE))
-SIDECAR_URL ?= http://localhost:8081
-SIDECAR_GRPC_ADDR ?= localhost:50051
-SUGAR_GLIDER_URL ?= $(SIDECAR_URL)
-SUGAR_GLIDER_GRPC_ADDR ?= $(SIDECAR_GRPC_ADDR)
+SUGAR_GLIDER_URL ?= http://localhost:8081
+SUGAR_GLIDER_GRPC_ADDR ?= localhost:50051
+# Legacy env var compatibility
+SIDECAR_URL ?= $(SUGAR_GLIDER_URL)
+SIDECAR_GRPC_ADDR ?= $(SUGAR_GLIDER_GRPC_ADDR)
 
 # Clean rebuild - removes old images first (ONLY use when rebuilding needed)
 # Detects WSL and uses docker.exe/docker-compose.exe if needed
