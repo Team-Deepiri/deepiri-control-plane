@@ -1,7 +1,7 @@
 /**
  * Event Consumer for Realtime Gateway
- * Uses Synapse sidecar transport only.
- * Redis Streams access remains owned by the sidecar.
+ * Uses Synapse Sugar Glider transport (formerly sidecar).
+ * Redis Streams access remains owned by the transport service.
  */
 import { request as httpRequest } from 'http';
 import { request as httpsRequest } from 'https';
@@ -68,7 +68,10 @@ const STREAM_SPECS: StreamSpec[] = [
 const PRIMARY_CONSUMER_GROUP = (process.env.STREAM_CONSUMER_GROUP || 'realtime-gateway').trim();
 const PRIMARY_CONSUMER_NAME = (process.env.STREAM_CONSUMER_NAME || 'realtime-1').trim();
 const BLOCK_MS = parsePositiveInt(process.env.STREAM_BLOCK_MS, 1000);
-const SIDECAR_URL = process.env.SYNAPSE_SIDECAR_URL || 'http://synapse-sidecar:8081';
+const SUGAR_GLIDER_URL =
+  process.env.SYNAPSE_SUGAR_GLIDER_URL ||
+  process.env.SYNAPSE_SIDECAR_URL ||
+  'http://synapse-sidecar:8081';
 
 let isConsuming = false;
 let io: Server | null = null;
@@ -189,7 +192,7 @@ class SidecarEventTransport implements EventTransport {
 
 /**
  * Initialize and start consuming events.
- * Transport is sidecar-only by design.
+ * Transport is Sugar Glider only by design.
  */
 export async function startEventConsumption(socketIO: Server): Promise<void> {
   if (isConsuming) {
@@ -241,7 +244,7 @@ export async function stopEventConsumption(): Promise<void> {
 }
 
 function createTransport(): EventTransport {
-  return new SidecarEventTransport(SIDECAR_URL);
+  return new SidecarEventTransport(SUGAR_GLIDER_URL);
 }
 
 async function startStreamLoop(
