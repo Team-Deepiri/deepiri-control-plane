@@ -5,7 +5,7 @@
 
 set -uo pipefail
 
-COMPOSE_FILE="docker-compose.rtg-sidecar.local.yml"
+COMPOSE_FILE="docker-compose.rtg-sugar-glider.local.yml"
 MIN_DISK_GB=10
 MIN_MEM_GB=4
 HTTP_TIMEOUT_SEC=3
@@ -23,7 +23,7 @@ usage() {
 Usage: preflight.sh [options]
 
 Options:
-  -f, --file <compose-file>     Compose file to validate (default: docker-compose.rtg-sidecar.local.yml)
+  -f, --file <compose-file>     Compose file to validate (default: docker-compose.rtg-sugar-glider.local.yml)
       --min-disk-gb <gb>        Minimum free disk required at repo root (default: 10)
       --min-mem-gb <gb>         Minimum available memory required (default: 4)
       --timeout <seconds>       HTTP timeout for endpoint probes (default: 3)

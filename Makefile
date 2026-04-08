@@ -3,7 +3,9 @@
 
 .PHONY: rebuild clean build up down logs health heal rtg-up rtg-down rtg-logs rtg-health rtg-heal rtg-watchdog rtg-preflight rtg-smoke rtg-grpc-smoke rtg-failure rtg-gate rtg-gate-full rtg-sugar-up rtg-sugar-down rtg-sugar-logs rtg-sugar-health rtg-sugar-heal rtg-sugar-watchdog rtg-sugar-preflight rtg-sugar-smoke rtg-sugar-grpc-smoke rtg-sugar-failure rtg-sugar-gate rtg-sugar-gate-full
 
-RTG_COMPOSE_FILE := docker-compose.rtg-sidecar.local.yml
+RTG_SUGAR_COMPOSE_FILE := docker-compose.rtg-sugar-glider.local.yml
+RTG_LEGACY_COMPOSE_FILE := docker-compose.rtg-sidecar.local.yml
+RTG_COMPOSE_FILE ?= $(if $(wildcard $(RTG_SUGAR_COMPOSE_FILE)),$(RTG_SUGAR_COMPOSE_FILE),$(RTG_LEGACY_COMPOSE_FILE))
 SIDECAR_URL ?= http://localhost:8081
 SIDECAR_GRPC_ADDR ?= localhost:50051
 SUGAR_GLIDER_URL ?= $(SIDECAR_URL)

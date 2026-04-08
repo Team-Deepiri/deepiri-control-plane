@@ -7,7 +7,7 @@
 
 set -uo pipefail
 
-COMPOSE_FILE="docker-compose.rtg-sidecar.local.yml"
+COMPOSE_FILE="docker-compose.rtg-sugar-glider.local.yml"
 INTERVAL_SEC=60
 HTTP_TIMEOUT_SEC=3
 RUN_ONCE=false
@@ -28,7 +28,7 @@ usage() {
 Usage: stack_watchdog.sh [options]
 
 Options:
-  -f, --file <compose-file>     Docker compose file (default: docker-compose.rtg-sidecar.local.yml)
+  -f, --file <compose-file>     Docker compose file (default: docker-compose.rtg-sugar-glider.local.yml)
   -i, --interval <seconds>      Loop interval in seconds (default: 60)
   -t, --timeout <seconds>       HTTP timeout for endpoint checks (default: 3)
       --once                    Run one pass and exit

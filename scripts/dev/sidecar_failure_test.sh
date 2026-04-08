@@ -7,7 +7,7 @@
 
 set -euo pipefail
 
-COMPOSE_FILE="docker-compose.rtg-sidecar.local.yml"
+COMPOSE_FILE="docker-compose.rtg-sugar-glider.local.yml"
 SIDECAR_URL="http://localhost:8081"
 REDIS_SERVICE="redis"
 REDIS_PASSWORD="redispassword"
@@ -25,7 +25,7 @@ usage() {
 Usage: sidecar_failure_test.sh [options]
 
 Options:
-  --file <compose-file>          Compose file (default: docker-compose.rtg-sidecar.local.yml)
+  --file <compose-file>          Compose file (default: docker-compose.rtg-sugar-glider.local.yml)
   --url <sidecar-url>            Sidecar URL (default: http://localhost:8081)
   --redis-service <name>         Redis service name in compose (default: redis)
   --redis-password <password>    Redis password (default: redispassword)
