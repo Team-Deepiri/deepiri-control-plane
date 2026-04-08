@@ -1,11 +1,13 @@
 # Deepiri Docker Compose Makefile
 # Makes rebuilding clean and easy
 
-.PHONY: rebuild clean build up down logs health heal rtg-up rtg-down rtg-logs rtg-health rtg-heal rtg-watchdog rtg-preflight rtg-smoke rtg-grpc-smoke rtg-failure rtg-gate rtg-gate-full
+.PHONY: rebuild clean build up down logs health heal rtg-up rtg-down rtg-logs rtg-health rtg-heal rtg-watchdog rtg-preflight rtg-smoke rtg-grpc-smoke rtg-failure rtg-gate rtg-gate-full rtg-sugar-up rtg-sugar-down rtg-sugar-logs rtg-sugar-health rtg-sugar-heal rtg-sugar-watchdog rtg-sugar-preflight rtg-sugar-smoke rtg-sugar-grpc-smoke rtg-sugar-failure rtg-sugar-gate rtg-sugar-gate-full
 
 RTG_COMPOSE_FILE := docker-compose.rtg-sidecar.local.yml
 SIDECAR_URL ?= http://localhost:8081
 SIDECAR_GRPC_ADDR ?= localhost:50051
+SUGAR_GLIDER_URL ?= $(SIDECAR_URL)
+SUGAR_GLIDER_GRPC_ADDR ?= $(SIDECAR_GRPC_ADDR)
 
 # Clean rebuild - removes old images first (ONLY use when rebuilding needed)
 # Detects WSL and uses docker.exe/docker-compose.exe if needed
@@ -133,7 +135,7 @@ heal:
 	done; \
 	if [ "$$actions" -eq 0 ]; then echo "✅ No healing actions needed."; else echo "✅ Applied $$actions healing action(s)."; fi
 
-# Sidecar local stack (fast path for sidecar rollout work)
+# Sugar Glider local stack (fast path for transport rollout work)
 rtg-up:
 	@if grep -qEi "(Microsoft|WSL)" /proc/version 2>/dev/null || [ -n "$$WSL_DISTRO_NAME" ]; then \
 		docker-compose.exe -f $(RTG_COMPOSE_FILE) up -d; \
@@ -208,27 +210,52 @@ rtg-preflight:
 	@./scripts/dev/preflight.sh --file $(RTG_COMPOSE_FILE) $(PREFLIGHT_ARGS)
 
 rtg-smoke:
-	@./scripts/dev/sidecar_smoke_test.sh --url $(SIDECAR_URL) $(SMOKE_ARGS)
+	@./scripts/dev/sugar_glider_smoke_test.sh --url $(SUGAR_GLIDER_URL) $(SMOKE_ARGS)
 
 rtg-grpc-smoke:
-	@./scripts/dev/sidecar_grpc_smoke_test.sh --addr $(SIDECAR_GRPC_ADDR) $(GRPC_SMOKE_ARGS)
+	@./scripts/dev/sugar_glider_grpc_smoke_test.sh --addr $(SUGAR_GLIDER_GRPC_ADDR) $(GRPC_SMOKE_ARGS)
 
 rtg-failure:
-	@./scripts/dev/sidecar_failure_test.sh --file $(RTG_COMPOSE_FILE) --url $(SIDECAR_URL) $(FAILURE_ARGS)
+	@./scripts/dev/sugar_glider_failure_test.sh --file $(RTG_COMPOSE_FILE) --url $(SUGAR_GLIDER_URL) $(FAILURE_ARGS)
 
 rtg-gate:
 	@set -e; \
-	echo "🚀 Running RTG sidecar gate (fast)..."; \
+	echo "🚀 Running RTG Sugar Glider gate (fast)..."; \
 	$(MAKE) rtg-up; \
 	$(MAKE) rtg-preflight; \
 	$(MAKE) rtg-health; \
 	$(MAKE) rtg-smoke; \
 	$(MAKE) rtg-grpc-smoke; \
-	echo "✅ RTG sidecar gate passed."
+	echo "✅ RTG Sugar Glider gate passed."
 
 rtg-gate-full:
 	@set -e; \
-	echo "🚀 Running RTG sidecar gate (full)..."; \
+	echo "🚀 Running RTG Sugar Glider gate (full)..."; \
 	$(MAKE) rtg-gate; \
 	$(MAKE) rtg-failure; \
-	echo "✅ RTG sidecar full gate passed."
+	echo "✅ RTG Sugar Glider full gate passed."
+
+# Sugar Glider naming aliases (legacy rtg-* targets remain supported)
+rtg-sugar-up: rtg-up
+
+rtg-sugar-down: rtg-down
+
+rtg-sugar-logs: rtg-logs
+
+rtg-sugar-health: rtg-health
+
+rtg-sugar-heal: rtg-heal
+
+rtg-sugar-watchdog: rtg-watchdog
+
+rtg-sugar-preflight: rtg-preflight
+
+rtg-sugar-smoke: rtg-smoke
+
+rtg-sugar-grpc-smoke: rtg-grpc-smoke
+
+rtg-sugar-failure: rtg-failure
+
+rtg-sugar-gate: rtg-gate
+
+rtg-sugar-gate-full: rtg-gate-full

@@ -57,9 +57,12 @@ scripts/
 - `dev-docker.sh` - Development Docker helper
 - `preflight.sh` - Startup preflight checks (Docker, ports, disk/memory, health endpoints)
 - `stack_watchdog.sh` - Health watchdog (checks services/endpoints and heals unhealthy containers)
-- `sidecar_smoke_test.sh` - One-shot sidecar publish/read/ack smoke test
-- `sidecar_grpc_smoke_test.sh` - One-shot sidecar gRPC Health/Publish/Subscribe/Ack smoke test
-- `sidecar_failure_test.sh` - Redis outage/WAL replay + DLQ failure-path test
+- `sugar_glider_smoke_test.sh` - One-shot Sugar Glider publish/read/ack smoke test
+- `sugar_glider_grpc_smoke_test.sh` - One-shot Sugar Glider gRPC Health/Publish/Subscribe/Ack smoke test
+- `sugar_glider_failure_test.sh` - Redis outage/WAL replay + DLQ failure-path test
+- `sidecar_smoke_test.sh` - Legacy alias for `sugar_glider_smoke_test.sh`
+- `sidecar_grpc_smoke_test.sh` - Legacy alias for `sugar_glider_grpc_smoke_test.sh`
+- `sidecar_failure_test.sh` - Legacy alias for `sugar_glider_failure_test.sh`
 - `dev-start.js` - Development start script
 - `fix-dependencies.sh` - Fix npm/node dependencies
 
