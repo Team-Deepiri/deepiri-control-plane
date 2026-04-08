@@ -276,25 +276,26 @@ check_endpoint() {
 }
 
 check_endpoints() {
-    local synapse_required gateway_required sidecar_required
+    local synapse_required gateway_required sugar_glider_required
 
     synapse_required=false
     gateway_required=false
-    sidecar_required=false
+    sugar_glider_required=false
 
     if [ "${REQUIRE_ENDPOINTS}" = true ]; then
         synapse_required=true
         gateway_required=true
-        sidecar_required=true
+        sugar_glider_required=true
     else
         service_is_running "synapse" && synapse_required=true
         service_is_running "realtime-gateway" && gateway_required=true
-        service_is_running "synapse-sidecar" && sidecar_required=true
+        service_is_running "synapse-sugar-glider" && sugar_glider_required=true
+        service_is_running "synapse-sidecar" && sugar_glider_required=true
     fi
 
     check_endpoint "synapse" "http://localhost:8002/health" "${synapse_required}"
     check_endpoint "realtime-gateway" "http://localhost:5008/health" "${gateway_required}"
-    check_endpoint "synapse-sidecar" "http://localhost:8081/readyz" "${sidecar_required}"
+    check_endpoint "synapse-sugar-glider" "http://localhost:8081/readyz" "${sugar_glider_required}"
 }
 
 main() {

@@ -121,6 +121,9 @@ endpoint_for_service() {
         realtime-gateway)
             echo "http://localhost:5008/health"
             ;;
+        synapse-sugar-glider)
+            echo "http://localhost:8081/readyz"
+            ;;
         synapse-sidecar)
             echo "http://localhost:8081/readyz"
             ;;
