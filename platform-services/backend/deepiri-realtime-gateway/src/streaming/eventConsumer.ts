@@ -284,6 +284,21 @@ function normalizeEvent(fields: Record<string, unknown>): StreamEvent {
   if (event.event === undefined && event.event_type !== undefined) {
     event.event = String(event.event_type);
   }
+  // Sidecar events may nest routing keys in payload; hoist them for socket routing.
+  const payload = asRecord(event.payload);
+  if (event.user_id === undefined && payload) {
+    const payloadUser = firstDefined(payload, ['user_id', 'userId']);
+    if (payloadUser !== undefined) {
+      event.user_id = payloadUser;
+    }
+  }
+  if (event.user_id === undefined && payload) {
+    const nestedUser = asRecord(payload.user);
+    const nestedUserId = nestedUser ? firstDefined(nestedUser, ['id', 'user_id', 'userId']) : undefined;
+    if (nestedUserId !== undefined) {
+      event.user_id = nestedUserId;
+    }
+  }
   if (event.timestamp === undefined) {
     event.timestamp = new Date().toISOString();
   }
@@ -292,6 +307,22 @@ function normalizeEvent(fields: Record<string, unknown>): StreamEvent {
   }
 
   return event as StreamEvent;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function firstDefined(source: Record<string, unknown>, keys: string[]): unknown {
+  for (const key of keys) {
+    if (source[key] !== undefined) {
+      return source[key];
+    }
+  }
+  return undefined;
 }
 
 function tryParseJson(value: string): unknown {
