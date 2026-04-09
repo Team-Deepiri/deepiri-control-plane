@@ -17,7 +17,7 @@ This document is the running implementation artifact for tasks `A1-A8`.
 - [x] `A3` Define the decision rubric
 - [x] `A4` Evaluate Option 1 (stay in `deepiri-platform`)
 - [x] `A5` Evaluate Option 2 (extract Sugar Glider only)
-- [ ] `A6` Evaluate Option 3 (extract Sugar Glider + Synapse contract)
+- [x] `A6` Evaluate Option 3 (extract Sugar Glider + Synapse contract)
 - [ ] `A7` Choose recommendation and migration order
 - [ ] `A8` Publish decision package (memo + boss summary)
 
@@ -384,3 +384,105 @@ For each option we will publish:
 - Option 2 improves ownership and release agility but introduces medium migration/coordination cost.
 - This option is a strong middle path if leadership wants gradual decoupling without immediate contract extraction.
 - Final recommendation depends on whether the org values near-term safety (Option 1) or boundary clarity/agility (Option 2/3).
+
+## A6 Output: Option 3 Evaluation (Extract Sugar Glider + Synapse Contract)
+
+### Option 3 definition
+- Extract Sugar Glider runtime into `deepiri-sugar-glider`.
+- Extract Synapse contract/proto ownership into `deepiri-synapse` (or equivalent dedicated contract package surface).
+- Move to explicit package-version contract governance across producers/consumers.
+
+### Repo boundaries under Option 3
+- `deepiri-sugar-glider`:
+  - runtime service behavior, WAL handling, health/read/ack APIs, runtime CI/CD.
+- `deepiri-synapse` (contract repo/package):
+  - proto source-of-truth, generation config, version tags, compatibility/deprecation policy.
+- `deepiri-platform`:
+  - integration/orchestration, compose wiring, dependency pinning, integration tests.
+- `diri-cyrex` + `diri-helox`:
+  - consume versioned Synapse client artifacts, not ad hoc copied/generated stubs.
+
+### Versioning model under Option 3
+- Contract package versioning:
+  - semantic versioning with explicit backward-compatibility rules.
+- Runtime versioning:
+  - independent `deepiri-sugar-glider` release tags.
+- Consumer pinning:
+  - Cyrex/Helox pin contract versions and update intentionally via controlled PR waves.
+- Promotion rule:
+  - runtime releases that require contract changes must reference minimum compatible contract version.
+
+### Migration cost profile
+- Highest of all options due to:
+  - extracting two repos instead of one,
+  - introducing package/version lifecycle governance,
+  - coordinated updates across RTG, platform wiring, Cyrex, and Helox,
+  - temporary dual-support for A2 anchors during transition.
+- Requires phased rollout and strict change windows to avoid contract/runtime skew.
+
+### Failure modes and mitigations
+- Failure mode: contract/runtime version mismatch across repos.
+  - Mitigation: CI compatibility matrix (runtime version x contract version) as a merge gate.
+- Failure mode: consumers pull incompatible contract version.
+  - Mitigation: pinned dependency ranges + staged update PRs + canary integration tests.
+- Failure mode: rollback complexity when both runtime and contract changed.
+  - Mitigation: two-dimensional rollback runbook (runtime tag rollback + contract package rollback).
+- Failure mode: migration stalls due to coordination overhead.
+  - Mitigation: enforce phase ownership and milestone-based cutovers with explicit go/no-go criteria.
+
+### Scorecard (rubric from A3)
+
+| Criterion | Weight | Score (1-5) | Weighted |
+|---|---:|---:|---:|
+| Ownership clarity | 0.15 | 5 | 0.75 |
+| Release cadence fit | 0.10 | 5 | 0.50 |
+| Versioning model quality | 0.10 | 5 | 0.50 |
+| CI/CD complexity | 0.15 | 2 | 0.30 |
+| Local developer cost | 0.10 | 2 | 0.20 |
+| Cross-repo coordination overhead | 0.10 | 1 | 0.10 |
+| Migration risk | 0.20 | 2 | 0.40 |
+| Rollback safety | 0.10 | 2 | 0.20 |
+| **Total** | **1.00** |  | **2.95 / 5.00** |
+
+### Why these scores
+- `Ownership clarity (5)`: strongest clear boundaries across runtime, contract, and integration layers.
+- `Release cadence fit (5)`: maximum release independence for runtime and contract evolution.
+- `Versioning model quality (5)`: strongest explicit version semantics and dependency pinning discipline.
+- `CI/CD complexity (2)`: multiple pipelines and compatibility checks increase build/release burden.
+- `Local developer cost (2)`: local end-to-end work requires more repo bootstrap and version coordination.
+- `Cross-repo coordination (1)`: highest ongoing coordination surface among options.
+- `Migration risk (2)`: highest structural change scope and highest chance of multi-repo drift.
+- `Rollback safety (2)`: rollback is possible but operationally hardest because two independently versioned assets can fail independently.
+
+### Mandatory gate check
+- Compatibility gate: **PASS (high control burden)**
+  - Requires extended dual-support period for A2 anchors during phased migration.
+- No-main-direct gate: **PASS**
+  - Can be fully delivered via branch PR workflow to `dev`.
+- Consumer continuity gate: **PASS (high control burden)**
+  - Must sequence Cyrex/Helox upgrades against contract version tags.
+- Rollback gate: **PASS (high control burden)**
+  - Requires tested dual rollback strategy before cutover completion.
+
+### Pros
+- Best long-term architecture hygiene and ownership clarity.
+- Strongest path to predictable contract governance and intentional compatibility policy.
+- Highest potential for team autonomy and independent release velocity.
+
+### Cons
+- Largest delivery overhead in the near term.
+- Most complex migration and operational change-management burden.
+- Highest coordination tax for day-to-day cross-team work after extraction.
+
+### Ownership model under Option 3
+- Sugar Glider team:
+  - Runtime implementation and runtime SLO ownership.
+- Synapse contract team:
+  - Proto lifecycle, compatibility policy, package releases, and SDK generation policy.
+- Integration owners:
+  - Platform compose/dependency integration plus consumer upgrade orchestration.
+
+## A6 Conclusions
+- Option 3 is the strongest strategic end-state for boundaries and version governance.
+- It is also the most expensive/risky near-term path and needs disciplined phased execution to avoid disruption.
+- This option should only be chosen now if leadership prioritizes long-term architecture over short-term delivery safety.
