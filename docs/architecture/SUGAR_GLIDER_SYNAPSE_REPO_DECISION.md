@@ -14,7 +14,7 @@ This document is the running implementation artifact for tasks `A1-A8`.
 ## Task Status
 - [x] `A1` Capture current-state architecture
 - [x] `A2` Inventory compatibility anchors
-- [ ] `A3` Define the decision rubric
+- [x] `A3` Define the decision rubric
 - [ ] `A4` Evaluate Option 1 (stay in `deepiri-platform`)
 - [ ] `A5` Evaluate Option 2 (extract Sugar Glider only)
 - [ ] `A6` Evaluate Option 3 (extract Sugar Glider + Synapse contract)
@@ -166,3 +166,56 @@ Migration sensitivity:
 - Sidecar naming persists by design at contract, env, ops, and runtime identity layers.
 - These anchors are compatibility-critical; they should remain stable during architecture decision work (`A3-A8`).
 - Architecture recommendation should treat naming cleanup as a later, explicit migration lane with dual-support and rollback gates.
+
+## A3 Output: Decision Rubric
+
+### 1) Scoring scale and evaluation method
+- Score each criterion on a `1-5` scale:
+  - `1` = poor fit / high risk
+  - `3` = acceptable with mitigations
+  - `5` = strong fit / low risk
+- Weighted total per option:
+  - `weighted_score = sum(score * weight)`
+- Maximum possible total:
+  - `5.00` (weights sum to `1.00`)
+
+### 2) Criteria and weights (locked for A4-A6)
+
+| Criterion | Weight | What we measure |
+|---|---:|---|
+| Ownership clarity | 0.15 | Single-team accountability, boundary clarity, and operational ownership. |
+| Release cadence fit | 0.10 | Ability for Sugar Glider/Synapse changes to ship at the right pace without blocking unrelated services. |
+| Versioning model quality | 0.10 | Clarity and enforceability of contract/runtime versioning across repos. |
+| CI/CD complexity | 0.15 | Pipeline count, integration complexity, QA burden, and failure surface. |
+| Local developer cost | 0.10 | Setup friction, mock/dependency burden, and inner-loop speed for contributors. |
+| Cross-repo coordination overhead | 0.10 | Number of synchronized PRs/releases needed for normal feature work. |
+| Migration risk | 0.20 | Likelihood and impact of regressions while moving to the target structure. |
+| Rollback safety | 0.10 | Ability to revert quickly and safely under production or QA failure. |
+
+Weighting rationale:
+- Migration and execution safety are intentionally weighted highest (`migration risk` + `rollback safety` + `CI/CD complexity` = `0.45`) because this lane has active compatibility anchors and multi-repo consumers.
+- Ownership and release needs are second-priority (`0.25`) so architecture remains operationally sustainable after cutover.
+- Developer and coordination costs remain material (`0.20`) but should not override safety.
+
+### 3) Mandatory gates (must pass regardless of score)
+- **Compatibility gate:** Option must preserve A2 anchors during migration or provide explicit dual-support sequence.
+- **No-main-direct gate:** Implementation remains branch/PR based (`feature -> dev`), with no direct `main` edits.
+- **Consumer continuity gate:** Cyrex and Helox must retain working contract integration through each migration phase.
+- **Rollback gate:** Each migration phase must define exact rollback action and data safety posture (including WAL continuity).
+
+### 4) Tie-break rules
+- If weighted totals are within `0.25`, choose the option with lower `migration risk`.
+- If still tied, choose the option with higher `rollback safety`.
+- If still tied, prefer lower `cross-repo coordination overhead` for next-quarter execution speed.
+
+### 5) Output format to use in A4-A6
+For each option we will publish:
+- criterion-by-criterion score table (`1-5` + weighted subtotal),
+- explicit risks and mitigations,
+- ownership model,
+- required migration sequence and rollback steps.
+
+## A3 Conclusions
+- The rubric is now fixed and objective enough to compare all three architecture options consistently.
+- Safety constraints from A2 are elevated into mandatory gates, so high-level preference cannot override compatibility/rollback requirements.
+- `A4-A6` can now proceed without inventing new evaluation criteria midstream.
