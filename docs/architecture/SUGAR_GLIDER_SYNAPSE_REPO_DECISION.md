@@ -13,7 +13,7 @@ This document is the running implementation artifact for tasks `A1-A8`.
 
 ## Task Status
 - [x] `A1` Capture current-state architecture
-- [ ] `A2` Inventory compatibility anchors
+- [x] `A2` Inventory compatibility anchors
 - [ ] `A3` Define the decision rubric
 - [ ] `A4` Evaluate Option 1 (stay in `deepiri-platform`)
 - [ ] `A5` Evaluate Option 2 (extract Sugar Glider only)
@@ -80,3 +80,89 @@ flowchart LR
 - Sugar Glider is operationally embedded in RTG today, not yet separated as an independently owned runtime repo.
 - The contract and consumer ecosystem are still sidecar-named at the protobuf and generated-client layers.
 - Any repo extraction decision must account for cross-repo client regeneration and compatibility sequencing (Cyrex + Helox), not only RTG code movement.
+
+## A2 Output: Compatibility Anchor Inventory
+
+### 1) Proto + contract anchors (intentionally still sidecar-named)
+- Canonical proto path remains:
+  - `platform-services/backend/deepiri-realtime-gateway/synapse-sidecar/proto/synapse/v1/sidecar.proto`
+- Service name in proto remains:
+  - `SynapseSidecar`
+- Generated Python modules remain sidecar-named:
+  - `sidecar_pb2.py`
+  - `sidecar_pb2_grpc.py`
+
+Migration sensitivity:
+- Renaming proto package/service/module names in this phase would require synchronized regeneration and rollout across RTG, Cyrex, and Helox.
+- Keeping proto/stub names stable during architecture decision work reduces blast radius.
+
+### 2) Consumer/client naming anchors (Cyrex + Helox)
+- Cyrex integration uses sidecar client naming:
+  - `diri-cyrex/app/integrations/streaming/synapse_sidecar_client.py`
+  - `SynapseSidecarStub` and `sidecar_pb2*` imports.
+- Helox integration uses sidecar transport + stubs:
+  - `diri-helox/integrations/synapse_event_publisher.py`
+  - gRPC imports from sidecar-named generated modules.
+
+Migration sensitivity:
+- Consumer naming and generated imports are hard compatibility anchors.
+- Any contract rename needs cross-repo PR coordination, release ordering, and rollback-safe dual-support.
+
+### 3) Environment/config anchors
+- RTG supports:
+  - preferred `SYNAPSE_SUGAR_GLIDER_URL`
+  - compatibility `SYNAPSE_SIDECAR_URL`
+- Cyrex + Helox + scripts still rely on sidecar env/config surfaces:
+  - `SYNAPSE_TRANSPORT=sidecar`
+  - `SYNAPSE_SIDECAR_URL`
+  - `SYNAPSE_SIDECAR_TIMEOUT_SEC`
+  - `SYNAPSE_SIDECAR_SENDER`
+  - `SYNAPSE_GRPC_ADDR`
+
+Migration sensitivity:
+- Env key migration must be staged; immediate hard rename risks local/dev breakage and silent misconfiguration.
+- Dual-key or adapter-period support is required until all consumers are aligned.
+
+### 4) Service alias + ops anchor points
+- Compose and operational scripts still keep sidecar aliasing:
+  - `docker-compose.rtg-sugar-glider.local.yml` includes `synapse-sidecar` alias.
+  - `scripts/dev/preflight.sh` and `scripts/dev/stack_watchdog.sh` recognize sidecar naming.
+- Make targets preserve sidecar command surfaces:
+  - `rtg-sidecar-*` targets in `Makefile`.
+
+Migration sensitivity:
+- Ops/tooling assumptions are distributed and script-bound.
+- Alias removal must wait for a coordinated scripts/docs update wave.
+
+### 5) Binary/runtime anchors
+- Sugar Glider container still builds/executes sidecar binary name:
+  - `platform-services/backend/deepiri-realtime-gateway/synapse-sidecar/Dockerfile`
+  - `/out/sidecar`, `/app/sidecar`, healthcheck/entrypoint use `sidecar`.
+
+Migration sensitivity:
+- Binary rename is low business value right now and creates avoidable deployment/test churn.
+- Keep binary compatibility until architecture path is finalized.
+
+### 6) WAL compatibility anchor
+- WAL implementation intentionally supports legacy and canonical filenames:
+  - `platform-services/backend/deepiri-realtime-gateway/synapse-sidecar/internal/wal/wal.go`
+  - canonical `sugar-glider.wal.jsonl`
+  - legacy fallback `sidecar.wal.jsonl`
+
+Migration sensitivity:
+- Legacy WAL fallback is required for continuity and rollback safety.
+- Removing fallback before migration completion risks local state loss and replay issues.
+
+### 7) Runtime consumer identity anchor
+- RTG consumer transport naming intentionally remains sidecar-aligned:
+  - `platform-services/backend/deepiri-realtime-gateway/src/streaming/eventConsumer.ts`
+  - consumer name/suffix compatibility remains tied to `sidecar`.
+
+Migration sensitivity:
+- Consumer naming affects stream group/offset semantics and operational observability.
+- Name changes require explicit migration strategy for stream/consumer continuity.
+
+## A2 Conclusions
+- Sidecar naming persists by design at contract, env, ops, and runtime identity layers.
+- These anchors are compatibility-critical; they should remain stable during architecture decision work (`A3-A8`).
+- Architecture recommendation should treat naming cleanup as a later, explicit migration lane with dual-support and rollback gates.
