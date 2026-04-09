@@ -26,7 +26,7 @@ interface EventTransport {
   ): Promise<void>;
 }
 
-interface SidecarReadRequest {
+interface SugarGliderReadRequest {
   stream: string;
   consumer_group: string;
   consumer_name: string;
@@ -34,23 +34,23 @@ interface SidecarReadRequest {
   block_ms: number;
 }
 
-interface SidecarReadEvent {
+interface SugarGliderReadEvent {
   stream: string;
   entry_id: string;
   fields: Record<string, unknown>;
 }
 
-interface SidecarReadResponse {
-  events: SidecarReadEvent[];
+interface SugarGliderReadResponse {
+  events: SugarGliderReadEvent[];
 }
 
-interface SidecarAckRequest {
+interface SugarGliderAckRequest {
   stream: string;
   consumer_group: string;
   entry_ids: string[];
 }
 
-interface SidecarAckResponse {
+interface SugarGliderAckResponse {
   acked: number;
 }
 
@@ -78,7 +78,7 @@ let isConsuming = false;
 let io: Server | null = null;
 let transport: EventTransport | null = null;
 
-class SidecarEventTransport implements EventTransport {
+class SugarGliderEventTransport implements EventTransport {
   // Keep legacy identifier for consumer suffix compatibility.
   public readonly name: string = 'sidecar';
   public readonly displayName: string = 'sugar-glider';
@@ -102,7 +102,7 @@ class SidecarEventTransport implements EventTransport {
   ): Promise<void> {
     while (this.running) {
       try {
-        const response = await this.requestJson<SidecarReadRequest, SidecarReadResponse>('POST', '/v1/read', {
+        const response = await this.requestJson<SugarGliderReadRequest, SugarGliderReadResponse>('POST', '/v1/read', {
           stream: streamName,
           consumer_group: options.consumerGroup,
           consumer_name: options.consumerName,
@@ -115,7 +115,7 @@ class SidecarEventTransport implements EventTransport {
           const normalizedEvent = normalizeEvent(event.fields);
           await callback(normalizedEvent);
 
-          await this.requestJson<SidecarAckRequest, SidecarAckResponse>('POST', '/v1/ack', {
+          await this.requestJson<SugarGliderAckRequest, SugarGliderAckResponse>('POST', '/v1/ack', {
             stream: event.stream || streamName,
             consumer_group: options.consumerGroup,
             entry_ids: [event.entry_id],
@@ -247,7 +247,7 @@ export async function stopEventConsumption(): Promise<void> {
 }
 
 function createTransport(): EventTransport {
-  return new SidecarEventTransport(SUGAR_GLIDER_URL);
+  return new SugarGliderEventTransport(SUGAR_GLIDER_URL);
 }
 
 async function startStreamLoop(
@@ -290,7 +290,7 @@ function normalizeEvent(fields: Record<string, unknown>): StreamEvent {
   if (event.event === undefined && event.event_type !== undefined) {
     event.event = String(event.event_type);
   }
-  // Sidecar events may nest routing keys in payload; hoist them for socket routing.
+  // Sugar Glider events may nest routing keys in payload; hoist them for socket routing.
   const payload = asRecord(event.payload);
   if (event.user_id === undefined && payload) {
     const payloadUser = firstDefined(payload, ['user_id', 'userId']);
