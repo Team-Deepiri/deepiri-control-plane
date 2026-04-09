@@ -61,6 +61,7 @@ services:
       REDIS_PORT: 6379
       REDIS_PASSWORD: redispassword
       SYNAPSE_URL: http://synapse:8002
+      SYNAPSE_SUGAR_GLIDER_URL: http://synapse-sugar-glider:8081
       SYNAPSE_SIDECAR_URL: http://synapse-sidecar:8081
       SYNAPSE_GRPC_ADDR: synapse-sidecar:50051
       STREAM_CONSUMER_GROUP: realtime-gateway
@@ -115,6 +116,10 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    networks:
+      default:
+        aliases:
+          - synapse-sugar-glider
     healthcheck:
       test: ["CMD", "/app/sidecar", "healthcheck"]
       interval: 5s
