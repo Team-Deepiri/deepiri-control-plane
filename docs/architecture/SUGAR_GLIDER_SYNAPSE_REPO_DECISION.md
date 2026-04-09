@@ -16,7 +16,7 @@ This document is the running implementation artifact for tasks `A1-A8`.
 - [x] `A2` Inventory compatibility anchors
 - [x] `A3` Define the decision rubric
 - [x] `A4` Evaluate Option 1 (stay in `deepiri-platform`)
-- [ ] `A5` Evaluate Option 2 (extract Sugar Glider only)
+- [x] `A5` Evaluate Option 2 (extract Sugar Glider only)
 - [ ] `A6` Evaluate Option 3 (extract Sugar Glider + Synapse contract)
 - [ ] `A7` Choose recommendation and migration order
 - [ ] `A8` Publish decision package (memo + boss summary)
@@ -292,3 +292,95 @@ For each option we will publish:
 - Option 1 is the safest immediate execution path, with strong migration/rollback safety.
 - Its tradeoff is strategic: it defers boundary cleanup and keeps ownership/versioning less explicit.
 - This becomes a baseline comparator for A5/A6, not yet the final recommendation.
+
+## A5 Output: Option 2 Evaluation (Extract `deepiri-sugar-glider` Only)
+
+### Option 2 definition
+- Extract Sugar Glider runtime into its own repo (`deepiri-sugar-glider`).
+- Keep Synapse contract ownership where it currently lives for now (no Synapse contract repo/package extraction in this phase).
+- Keep compatibility anchors from A2 during and after extraction.
+
+### Proposed extraction scope (runtime only)
+- Move from current location:
+  - `platform-services/backend/deepiri-realtime-gateway/synapse-sidecar`
+- New repo owns:
+  - runtime service code (`internal/*`, server boot, health/read/ack behavior),
+  - Dockerfile/build scripts, runtime tests, runtime README/ops docs.
+- Contract source remains where it is for this option:
+  - protobuf source-of-truth and compatibility policy are not moved yet.
+
+### Dependency impact
+- `deepiri-platform` gains an external dependency on `deepiri-sugar-glider` (gitlink/submodule or image/artifact pinning strategy).
+- Compose and scripts in platform must reference extracted runtime source/image while preserving:
+  - `synapse-sugar-glider` service identity and `synapse-sidecar` compatibility alias.
+- Cyrex and Helox contract clients remain unchanged in this option; they continue consuming sidecar-named stubs.
+
+### Release/versioning impact
+- Sugar Glider runtime can release independently from platform code once extraction lands.
+- Contract versioning remains partially coupled because proto stewardship is still centralized outside the runtime repo.
+- Net effect: runtime cadence improves, but full contract/runtime decoupling is incomplete.
+
+### Scorecard (rubric from A3)
+
+| Criterion | Weight | Score (1-5) | Weighted |
+|---|---:|---:|---:|
+| Ownership clarity | 0.15 | 4 | 0.60 |
+| Release cadence fit | 0.10 | 4 | 0.40 |
+| Versioning model quality | 0.10 | 3 | 0.30 |
+| CI/CD complexity | 0.15 | 3 | 0.45 |
+| Local developer cost | 0.10 | 2 | 0.20 |
+| Cross-repo coordination overhead | 0.10 | 2 | 0.20 |
+| Migration risk | 0.20 | 3 | 0.60 |
+| Rollback safety | 0.10 | 3 | 0.30 |
+| **Total** | **1.00** |  | **3.05 / 5.00** |
+
+### Why these scores
+- `Ownership clarity (4)`: runtime responsibility becomes explicit in its own repo.
+- `Release cadence fit (4)`: runtime hotfixes/features can ship without waiting on broader platform bundles.
+- `Versioning model quality (3)`: improved for runtime; still partial because contract ownership remains external.
+- `CI/CD complexity (3)`: new pipelines and release wiring are required, but still simpler than extracting both runtime and contract.
+- `Local developer cost (2)`: local iteration now needs coordinated multi-repo setup/pinning.
+- `Cross-repo coordination (2)`: runtime-contract-consumer flows require more synchronized PR/release choreography.
+- `Migration risk (3)`: moderate due to extraction and wiring changes across compose/scripts/import paths.
+- `Rollback safety (3)`: rollback is feasible but requires repo-reference/image pin rollback, not just in-place revert.
+
+### Mandatory gate check
+- Compatibility gate: **PASS (with controls)**
+  - Requires strict preservation of sidecar compatibility anchors during extraction.
+- No-main-direct gate: **PASS**
+  - Can be delivered through feature branches and PRs into `dev`.
+- Consumer continuity gate: **PASS (with controls)**
+  - Must avoid proto/service-name churn while extraction is underway.
+- Rollback gate: **PASS (with controls)**
+  - Must define pinned fallback image/ref and one-command compose rollback path.
+
+### Pros
+- Clarifies runtime ownership and enables faster Sugar Glider release cadence.
+- Creates clean runway for eventual full contract separation if desired.
+- Keeps current consumers stable by deferring contract rename/extraction.
+
+### Cons
+- Introduces coordination overhead immediately (repo refs, version pins, release order).
+- Leaves contract governance split across boundaries (partial decoupling).
+- Adds local-dev and CI/CD operational complexity compared to Option 1.
+
+### Risks and mitigations
+- Risk: repo extraction breaks local compose/scripts.
+  - Mitigation: keep alias compatibility and run preflight/watchdog/smoke gates on every extraction PR.
+- Risk: runtime and contract drift over time.
+  - Mitigation: establish contract compatibility check in CI before release promotion.
+- Risk: rollback friction under incident pressure.
+  - Mitigation: require tested fallback pin and rollback runbook before cutover.
+
+### Ownership model under Option 2
+- Sugar Glider repo team:
+  - Runtime service code, runtime CI/CD, release tagging, runtime observability.
+- Contract stewardship (current location):
+  - Proto lifecycle, compatibility/deprecation policy, client regeneration guidance.
+- Platform integration team:
+  - Compose wiring, dependency pinning strategy, integration test gates in `deepiri-platform`.
+
+## A5 Conclusions
+- Option 2 improves ownership and release agility but introduces medium migration/coordination cost.
+- This option is a strong middle path if leadership wants gradual decoupling without immediate contract extraction.
+- Final recommendation depends on whether the org values near-term safety (Option 1) or boundary clarity/agility (Option 2/3).
