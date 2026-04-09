@@ -73,7 +73,7 @@ dist/
 build/
 *.egg
 .opencode
-
+vizult-output/
 # Development virtual environment (one level above deepiri)
 ../.dev_venv/
 
