@@ -71,7 +71,7 @@ const BLOCK_MS = parsePositiveInt(process.env.STREAM_BLOCK_MS, 1000);
 const SUGAR_GLIDER_URL =
   process.env.SYNAPSE_SUGAR_GLIDER_URL ||
   process.env.SYNAPSE_SIDECAR_URL ||
-  'http://synapse-sidecar:8081';
+  'http://synapse-sugar-glider:8081';
 
 let isConsuming = false;
 let io: Server | null = null;
