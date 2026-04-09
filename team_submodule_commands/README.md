@@ -71,6 +71,8 @@ git pull origin main
 | **deepiri-api-gateway** | `platform-services/backend/deepiri-api-gateway` | Infrastructure, Backend, Platform |
 | **deepiri-auth-service** | `platform-services/backend/deepiri-auth-service` | Backend, Platform |
 | **deepiri-external-bridge-service** | `platform-services/backend/deepiri-external-bridge-service` | Infrastructure, Backend, Platform |
+| **deepiri-synapse** | `platform-services/shared/deepiri-synapse` | Backend, Infrastructure, Platform |
+| **deepiri-sugar-glider** | `platform-services/shared/deepiri-sugar-glider` | Backend, Infrastructure, Platform |
 
 ## 🌿 Branch Naming Convention
 
@@ -111,13 +113,13 @@ All feature and bug fix branches must follow this naming convention:
 - **Directory**: `infrastructure-team/`
 - **Guide**: [INFRASTRUCTURE_TEAM.md](./infrastructure-team/INFRASTRUCTURE_TEAM.md)
 - **Pull Script**: `./team_submodule_commands/infrastructure-team/pull_submodules.sh`
-- **Required Submodules**: `deepiri-api-gateway`, `deepiri-external-bridge-service`
+- **Required Submodules**: `deepiri-api-gateway`, `deepiri-external-bridge-service`, `deepiri-synapse`, `deepiri-sugar-glider`
 
 ### Backend Team
 - **Directory**: `backend-team/`
 - **Guide**: [BACKEND_TEAM.md](./backend-team/BACKEND_TEAM.md)
 - **Pull Script**: `./team_submodule_commands/backend-team/pull_submodules.sh`
-- **Required Submodules**: `deepiri-core-api`, `deepiri-api-gateway`, `deepiri-auth-service`, `deepiri-external-bridge-service`, `deepiri-web-frontend`
+- **Required Submodules**: `deepiri-core-api`, `deepiri-api-gateway`, `deepiri-auth-service`, `deepiri-external-bridge-service`, `deepiri-web-frontend`, `deepiri-synapse`, `deepiri-sugar-glider`
 
 ### Frontend Team
 - **Directory**: `frontend-team/`

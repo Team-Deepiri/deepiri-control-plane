@@ -25,7 +25,7 @@ This document is the running implementation artifact for tasks `A1-A8`.
 
 ### 1) Runtime placement today
 - Sugar Glider runtime is implemented inside:
-  - `platform-services/backend/deepiri-realtime-gateway/synapse-sidecar`
+  - `platform-services/shared/deepiri-sugar-glider`
 - Realtime Gateway consumes Sugar Glider over HTTP endpoints (`/readyz`, `/v1/read`, `/v1/ack`) via:
   - `platform-services/backend/deepiri-realtime-gateway/src/streaming/eventConsumer.ts`
 - RTG environment supports both naming surfaces:
@@ -52,7 +52,7 @@ This document is the running implementation artifact for tasks `A1-A8`.
 
 ### 4) Contract ownership shape today
 - Canonical contract file is still sidecar-named:
-  - `platform-services/backend/deepiri-realtime-gateway/synapse-sidecar/proto/synapse/v1/sidecar.proto`
+  - `platform-services/shared/deepiri-sugar-glider/proto/synapse/v1/sidecar.proto`
 - Service name in the proto is:
   - `SynapseSidecar`
 - Generated client artifacts are committed under both:
@@ -85,7 +85,7 @@ flowchart LR
 
 ### 1) Proto + contract anchors (intentionally still sidecar-named)
 - Canonical proto path remains:
-  - `platform-services/backend/deepiri-realtime-gateway/synapse-sidecar/proto/synapse/v1/sidecar.proto`
+  - `platform-services/shared/deepiri-sugar-glider/proto/synapse/v1/sidecar.proto`
 - Service name in proto remains:
   - `SynapseSidecar`
 - Generated Python modules remain sidecar-named:
@@ -136,7 +136,7 @@ Migration sensitivity:
 
 ### 5) Binary/runtime anchors
 - Sugar Glider container still builds/executes sidecar binary name:
-  - `platform-services/backend/deepiri-realtime-gateway/synapse-sidecar/Dockerfile`
+  - `platform-services/shared/deepiri-sugar-glider/Dockerfile`
   - `/out/sidecar`, `/app/sidecar`, healthcheck/entrypoint use `sidecar`.
 
 Migration sensitivity:
@@ -145,7 +145,7 @@ Migration sensitivity:
 
 ### 6) WAL compatibility anchor
 - WAL implementation intentionally supports legacy and canonical filenames:
-  - `platform-services/backend/deepiri-realtime-gateway/synapse-sidecar/internal/wal/wal.go`
+  - `platform-services/shared/deepiri-sugar-glider/internal/wal/wal.go`
   - canonical `sugar-glider.wal.jsonl`
   - legacy fallback `sidecar.wal.jsonl`
 
@@ -224,7 +224,7 @@ For each option we will publish:
 
 ### Option 1 definition
 - Keep Sugar Glider implementation where it is today:
-  - `platform-services/backend/deepiri-realtime-gateway/synapse-sidecar`
+  - `platform-services/shared/deepiri-sugar-glider`
 - Keep Synapse contract ownership in current location for now (no repo extraction in this phase).
 - Continue compatibility-first naming posture from A2.
 
@@ -302,7 +302,7 @@ For each option we will publish:
 
 ### Proposed extraction scope (runtime only)
 - Move from current location:
-  - `platform-services/backend/deepiri-realtime-gateway/synapse-sidecar`
+  - `platform-services/shared/deepiri-sugar-glider`
 - New repo owns:
   - runtime service code (`internal/*`, server boot, health/read/ack behavior),
   - Dockerfile/build scripts, runtime tests, runtime README/ops docs.

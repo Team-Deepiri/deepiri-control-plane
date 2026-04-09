@@ -90,7 +90,7 @@ services:
 
   synapse-sidecar:
     build:
-      context: ./platform-services/backend/deepiri-realtime-gateway/synapse-sidecar
+      context: ./platform-services/shared/deepiri-sugar-glider
       dockerfile: Dockerfile
     container_name: deepiri-synapse-sidecar-rtg-local
     restart: unless-stopped

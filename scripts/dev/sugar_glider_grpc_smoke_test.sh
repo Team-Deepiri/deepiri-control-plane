@@ -84,7 +84,7 @@ main() {
 
     local root_dir sugar_glider_dir consumer_arg
     root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-    sugar_glider_dir="${root_dir}/platform-services/backend/deepiri-realtime-gateway/synapse-sidecar"
+    sugar_glider_dir="${root_dir}/platform-services/shared/deepiri-sugar-glider"
     consumer_arg="${CONSUMER}"
     if [ -z "${consumer_arg}" ]; then
         consumer_arg="grpc-smoke-$(date +%s)"

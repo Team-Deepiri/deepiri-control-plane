@@ -110,6 +110,12 @@ fi
 if [ ! -d "platform-services/shared/deepiri-prismpipe/.git" ]; then
     echo "    ⚠️  WARNING: deepiri-prismpipe not found at expected location"
 fi
+if [ ! -d "platform-services/shared/deepiri-synapse/.git" ]; then
+    echo "    ⚠️  WARNING: deepiri-synapse not found at expected location"
+fi
+if [ ! -d "platform-services/shared/deepiri-sugar-glider/.git" ]; then
+    echo "    ⚠️  WARNING: deepiri-sugar-glider not found at expected location"
+fi
 echo "    ✅ Verification complete"
 echo ""
 
@@ -134,6 +140,8 @@ echo "  - Check status: git submodule status"
 echo "  - Update all: git submodule update --remote --recursive"
 echo "  - Sync all: git submodule foreach 'git checkout main && git pull'"
 echo "  - Work in PrismPipe: cd platform-services/shared/deepiri-prismpipe"
+echo "  - Work in Synapse: cd platform-services/shared/deepiri-synapse"
+echo "  - Work in Sugar Glider: cd platform-services/shared/deepiri-sugar-glider"
 echo ""
 
 # Automatically run setup-hooks.sh after pulling submodules
@@ -146,4 +154,3 @@ else
     echo "   Hooks will not be automatically configured."
 fi
 echo ""
-
