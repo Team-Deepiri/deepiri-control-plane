@@ -65,6 +65,8 @@ scripts/
 - `sidecar_failure_test.sh` - Legacy alias for `sugar_glider_failure_test.sh`
 - `make rtg-sugar-gate` - Preferred local Sugar Glider fast gate
 - `make rtg-sugar-gate-full` - Preferred local Sugar Glider full gate (includes failure-path test)
+- `make rtg-sidecar-gate` - Legacy alias for `make rtg-sugar-gate`
+- `make rtg-sidecar-gate-full` - Legacy alias for `make rtg-sugar-gate-full`
 - `dev-start.js` - Development start script
 - `fix-dependencies.sh` - Fix npm/node dependencies
 
