@@ -16,6 +16,7 @@ interface SubscriptionOptions {
 
 interface EventTransport {
   readonly name: string;
+  readonly displayName?: string;
   connect(): Promise<void>;
   disconnect(): Promise<void>;
   subscribe(
@@ -78,7 +79,9 @@ let io: Server | null = null;
 let transport: EventTransport | null = null;
 
 class SidecarEventTransport implements EventTransport {
+  // Keep legacy identifier for consumer suffix compatibility.
   public readonly name: string = 'sidecar';
+  public readonly displayName: string = 'sugar-glider';
   private running: boolean = false;
 
   constructor(private readonly baseUrl: string) {}
@@ -119,7 +122,7 @@ class SidecarEventTransport implements EventTransport {
           });
         }
       } catch (error) {
-        secureLog('error', `[SidecarTransport] subscription error for ${streamName}:`, error);
+        secureLog('error', `[SugarGliderTransport] subscription error for ${streamName}:`, error);
         await sleep(1000);
       }
     }
@@ -159,7 +162,7 @@ class SidecarEventTransport implements EventTransport {
           res.on('end', () => {
             const raw = Buffer.concat(chunks).toString('utf8');
             if ((res.statusCode || 500) >= 400) {
-              reject(new Error(`sidecar request failed (${res.statusCode}): ${raw}`));
+              reject(new Error(`sugar glider request failed (${res.statusCode}): ${raw}`));
               return;
             }
 
@@ -171,7 +174,7 @@ class SidecarEventTransport implements EventTransport {
             try {
               resolve(JSON.parse(raw) as TRes);
             } catch (error) {
-              reject(new Error(`failed to parse sidecar response: ${String(error)}`));
+              reject(new Error(`failed to parse sugar glider response: ${String(error)}`));
             }
           });
         }
@@ -179,7 +182,7 @@ class SidecarEventTransport implements EventTransport {
 
       req.on('error', reject);
       req.on('timeout', () => {
-        req.destroy(new Error('sidecar request timed out'));
+        req.destroy(new Error('sugar glider request timed out'));
       });
 
       if (payload) {
@@ -212,7 +215,7 @@ export async function startEventConsumption(socketIO: Server): Promise<void> {
     await transport.connect();
     secureLog(
       'info',
-      `[Realtime Gateway] Streaming backend: ${transport.name} (group=${options.consumerGroup}, consumer=${options.consumerName})`
+      `[Realtime Gateway] Streaming backend: ${transport.displayName || transport.name} (group=${options.consumerGroup}, consumer=${options.consumerName})`
     );
 
     for (const spec of STREAM_SPECS) {

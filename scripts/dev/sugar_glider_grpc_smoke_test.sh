@@ -82,15 +82,15 @@ main() {
     parse_args "$@"
     require_bin go
 
-    local root_dir sidecar_dir consumer_arg
+    local root_dir sugar_glider_dir consumer_arg
     root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-    sidecar_dir="${root_dir}/platform-services/backend/deepiri-realtime-gateway/synapse-sidecar"
+    sugar_glider_dir="${root_dir}/platform-services/backend/deepiri-realtime-gateway/synapse-sidecar"
     consumer_arg="${CONSUMER}"
     if [ -z "${consumer_arg}" ]; then
         consumer_arg="grpc-smoke-$(date +%s)"
     fi
 
-    (cd "${sidecar_dir}" && go run ./cmd/grpc-smoke \
+    (cd "${sugar_glider_dir}" && go run ./cmd/grpc-smoke \
         --addr "${GRPC_ADDR}" \
         --stream "${STREAM}" \
         --group "${GROUP}" \
