@@ -306,7 +306,7 @@ function normalizeEvent(fields: Record<string, unknown>): StreamEvent {
     event.timestamp = new Date().toISOString();
   }
   if (event.source === undefined) {
-    event.source = 'synapse-sidecar';
+    event.source = 'synapse-sugar-glider';
   }
 
   return event as StreamEvent;
