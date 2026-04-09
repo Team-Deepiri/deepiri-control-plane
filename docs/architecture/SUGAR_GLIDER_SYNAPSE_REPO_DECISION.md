@@ -18,8 +18,8 @@ This document is the running implementation artifact for tasks `A1-A8`.
 - [x] `A4` Evaluate Option 1 (stay in `deepiri-platform`)
 - [x] `A5` Evaluate Option 2 (extract Sugar Glider only)
 - [x] `A6` Evaluate Option 3 (extract Sugar Glider + Synapse contract)
-- [ ] `A7` Choose recommendation and migration order
-- [ ] `A8` Publish decision package (memo + boss summary)
+- [x] `A7` Choose recommendation and migration order
+- [x] `A8` Publish decision package (memo + boss summary)
 
 ## A1 Output: Current-State Architecture
 
@@ -486,3 +486,88 @@ For each option we will publish:
 - Option 3 is the strongest strategic end-state for boundaries and version governance.
 - It is also the most expensive/risky near-term path and needs disciplined phased execution to avoid disruption.
 - This option should only be chosen now if leadership prioritizes long-term architecture over short-term delivery safety.
+
+## A7 Output: Recommendation and Migration Order
+
+### Final recommendation
+- **Recommended path: Option 2 (extract `deepiri-sugar-glider` only), executed in phased rollout.**
+
+Rationale:
+- Option 1 scored highest for immediate safety, but it defers ownership clarity and keeps boundary ambiguity.
+- Option 3 gives strongest long-term boundaries, but its migration/coordination risk is too high for current delivery pressure.
+- Option 2 is the best balance: meaningful structural improvement now without full contract-repo extraction risk.
+
+### Direct answers to leadership questions
+1. Should Sugar Glider be its own repo?
+   - **Yes, via phased extraction to `deepiri-sugar-glider`.**
+2. Should Synapse be its own repo/package right now?
+   - **Not in this phase.** Keep contract stewardship where it is, with explicit version policy first.
+3. Where should Sugar Glider live relative to Synapse?
+   - **Sugar Glider as independent runtime repo; Synapse remains the contract surface it depends on.**
+
+### Phased migration sequence
+1. **Phase 0: Decision lock + compatibility freeze (now)**
+   - Lock A2 anchors as migration constraints.
+   - Publish ownership and compatibility policy.
+2. **Phase 1: Contract discipline in place (no extraction yet)**
+   - Add explicit contract change policy and compatibility checks in current location.
+   - Define client regeneration/update playbook for Cyrex/Helox.
+3. **Phase 2: Create `deepiri-sugar-glider` repo and mirror runtime**
+   - Move runtime code with no contract rename and no consumer-facing behavior change.
+   - Stand up runtime CI/CD and release tagging.
+4. **Phase 3: Integrate extracted runtime into `deepiri-platform`**
+   - Update compose/dependency wiring to pinned runtime artifact/ref.
+   - Preserve `synapse-sidecar` aliases and legacy env keys.
+5. **Phase 4: Validate and promote**
+   - Run preflight/watchdog/smoke + consumer integration checks.
+   - Promote through `feature -> dev` workflow with QA gates.
+6. **Phase 5: Stabilize and reassess Synapse extraction**
+   - After stable runtime extraction, reassess Option 3 with fresh risk profile.
+
+### What changes immediately vs what waits
+- Changes immediately:
+  - Adopt Option 2 as target architecture and begin Phase 1 readiness work.
+  - Keep active implementation in `deepiri-platform` while extraction is prepared.
+- Explicitly waits:
+  - Synapse contract repo/package extraction.
+  - Proto/service rename away from sidecar naming.
+  - Removal of legacy env/service aliases and WAL fallback compatibility.
+
+## A7 Conclusions
+- The team should move toward independent Sugar Glider runtime ownership now, without forcing full contract extraction in the same window.
+- This preserves delivery momentum while creating a clean runway for future contract decoupling.
+
+## A8 Output: Decision Package and Communication Text
+
+### Boss-facing summary (short)
+- `A1-A6` architecture analysis is complete.
+- Recommendation: extract `deepiri-sugar-glider` as its own repo in phases (Option 2), keep Synapse contract ownership where it is for now.
+- This answers the 3 decision questions directly while minimizing near-term migration risk.
+- We will preserve sidecar compatibility anchors during migration and only revisit Synapse repo extraction after Sugar Glider extraction stabilizes.
+
+### Plaky comment (copy/paste)
+Architecture decision update complete for Sugar Glider/Synapse (`A1-A8`):  
+Recommendation is **Option 2** — extract `deepiri-sugar-glider` to its own repo in phased rollout, while keeping Synapse contract ownership in current location for now.  
+Decision answers:
+1) Sugar Glider own repo: **Yes (phased)**  
+2) Synapse own repo/package now: **No (defer)**  
+3) Sugar Glider relative to Synapse: **independent runtime repo consuming Synapse contract surface**  
+Migration order is defined with compatibility/rollback gates and no direct `main` changes (`feature -> dev` workflow). Setting status to **Needs QA** for architecture review.
+
+### GitHub PR summary text (copy/paste)
+This PR delivers the Sugar Glider/Synapse architecture decision package (`A1-A8`) in `docs/architecture/SUGAR_GLIDER_SYNAPSE_REPO_DECISION.md`.
+
+What is included:
+- Current-state architecture and dependency map (`A1`)
+- Compatibility-anchor inventory (`A2`)
+- Weighted decision rubric (`A3`)
+- Option evaluations for:
+  - keep in platform (`A4`)
+  - extract Sugar Glider only (`A5`)
+  - extract Sugar Glider + Synapse contract (`A6`)
+- Final recommendation + migration order (`A7`)
+- Boss-facing communication text + Plaky/GitHub snippets (`A8`)
+
+Recommendation:
+- Proceed with **Option 2** phased extraction of `deepiri-sugar-glider`.
+- Defer Synapse contract repo extraction until post-stabilization checkpoint.
