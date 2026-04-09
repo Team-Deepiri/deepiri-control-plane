@@ -15,7 +15,7 @@ This document is the running implementation artifact for tasks `A1-A8`.
 - [x] `A1` Capture current-state architecture
 - [x] `A2` Inventory compatibility anchors
 - [x] `A3` Define the decision rubric
-- [ ] `A4` Evaluate Option 1 (stay in `deepiri-platform`)
+- [x] `A4` Evaluate Option 1 (stay in `deepiri-platform`)
 - [ ] `A5` Evaluate Option 2 (extract Sugar Glider only)
 - [ ] `A6` Evaluate Option 3 (extract Sugar Glider + Synapse contract)
 - [ ] `A7` Choose recommendation and migration order
@@ -219,3 +219,76 @@ For each option we will publish:
 - The rubric is now fixed and objective enough to compare all three architecture options consistently.
 - Safety constraints from A2 are elevated into mandatory gates, so high-level preference cannot override compatibility/rollback requirements.
 - `A4-A6` can now proceed without inventing new evaluation criteria midstream.
+
+## A4 Output: Option 1 Evaluation (Keep Sugar Glider in `deepiri-platform`)
+
+### Option 1 definition
+- Keep Sugar Glider implementation where it is today:
+  - `platform-services/backend/deepiri-realtime-gateway/synapse-sidecar`
+- Keep Synapse contract ownership in current location for now (no repo extraction in this phase).
+- Continue compatibility-first naming posture from A2.
+
+### Scorecard (rubric from A3)
+
+| Criterion | Weight | Score (1-5) | Weighted |
+|---|---:|---:|---:|
+| Ownership clarity | 0.15 | 2 | 0.30 |
+| Release cadence fit | 0.10 | 2 | 0.20 |
+| Versioning model quality | 0.10 | 2 | 0.20 |
+| CI/CD complexity | 0.15 | 4 | 0.60 |
+| Local developer cost | 0.10 | 3 | 0.30 |
+| Cross-repo coordination overhead | 0.10 | 3 | 0.30 |
+| Migration risk | 0.20 | 5 | 1.00 |
+| Rollback safety | 0.10 | 5 | 0.50 |
+| **Total** | **1.00** |  | **3.40 / 5.00** |
+
+### Why these scores
+- `Ownership clarity (2)`: runtime + contract + consumers are still coupled across RTG/Cyrex/Helox without hard boundary ownership.
+- `Release cadence fit (2)`: Sugar Glider changes remain tied to broader platform release rhythm.
+- `Versioning model quality (2)`: contract is shared, but version governance is implicit rather than package-version enforced.
+- `CI/CD complexity (4)`: avoids introducing new pipeline surfaces during current lane; current pipeline count stays stable.
+- `Local developer cost (3)`: no new repo bootstrapping, but existing multi-component setup remains non-trivial.
+- `Cross-repo coordination (3)`: moderate; extraction coordination is avoided, but consumer updates still require multi-repo PR work when contracts change.
+- `Migration risk (5)`: lowest immediate risk because no structural extraction occurs.
+- `Rollback safety (5)`: rollback remains straightforward to existing known topology and compatibility anchors.
+
+### Mandatory gate check
+- Compatibility gate: **PASS**
+  - A2 anchors remain intact; no forced rename/migration required.
+- No-main-direct gate: **PASS**
+  - Can be executed entirely through feature branch PRs to `dev`.
+- Consumer continuity gate: **PASS**
+  - Cyrex/Helox integration stays on current contract surface.
+- Rollback gate: **PASS**
+  - Structural rollback is trivial because structure is unchanged.
+
+### Pros
+- Lowest short-term delivery risk and fastest path to stable `dev` integration.
+- Preserves current compatibility anchors without extra migration mechanics.
+- Minimizes CI/CD and release-process churn during active feature work.
+
+### Cons
+- Boundaries stay blurry; long-term ownership and accountability remain ambiguous.
+- Contract/version governance stays ad hoc rather than explicit package/repo semantics.
+- Harder to optimize independent release velocity for Sugar Glider.
+
+### Risks and mitigations
+- Risk: architectural debt grows as more consumers bind to sidecar-era surfaces.
+  - Mitigation: enforce explicit compatibility policy and deprecation calendar in follow-on work.
+- Risk: future extraction becomes larger/more expensive.
+  - Mitigation: begin extraction pre-work now (contract packaging rules, client generation process, ownership docs) even if extraction is deferred.
+- Risk: mixed naming (`sidecar` and `sugar-glider`) continues to confuse contributors.
+  - Mitigation: maintain one authoritative mapping table and migration checklist in docs.
+
+### Ownership model under Option 1
+- Platform/RTG team:
+  - Sugar Glider runtime code, HTTP behavior, WAL behavior, compose + local ops.
+- Contract stewardship (current location):
+  - `sidecar.proto` evolution policy, compatibility guarantees, and regen guidance.
+- Consumer teams (Cyrex/Helox):
+  - Integration adapters and generated client refresh when contract updates are approved.
+
+## A4 Conclusions
+- Option 1 is the safest immediate execution path, with strong migration/rollback safety.
+- Its tradeoff is strategic: it defers boundary cleanup and keeps ownership/versioning less explicit.
+- This becomes a baseline comparator for A5/A6, not yet the final recommendation.
