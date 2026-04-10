@@ -207,19 +207,19 @@ rtg-heal:
 	if [ "$$actions" -eq 0 ]; then echo "✅ No healing actions needed."; else echo "✅ Applied $$actions healing action(s)."; fi
 
 rtg-watchdog:
-	@./scripts/dev/stack_watchdog.sh --file $(RTG_COMPOSE_FILE) $(WATCHDOG_ARGS)
+	@./scripts/dev/sugarglider/stack_watchdog.sh --file $(RTG_COMPOSE_FILE) $(WATCHDOG_ARGS)
 
 rtg-preflight:
-	@./scripts/dev/preflight.sh --file $(RTG_COMPOSE_FILE) $(PREFLIGHT_ARGS)
+	@./scripts/dev/sugarglider/preflight.sh --file $(RTG_COMPOSE_FILE) $(PREFLIGHT_ARGS)
 
 rtg-smoke:
-	@./scripts/dev/sugar_glider_smoke_test.sh --url $(SUGAR_GLIDER_URL) $(SMOKE_ARGS)
+	@./scripts/dev/sugarglider/sugar_glider_smoke_test.sh --url $(SUGAR_GLIDER_URL) $(SMOKE_ARGS)
 
 rtg-grpc-smoke:
-	@./scripts/dev/sugar_glider_grpc_smoke_test.sh --addr $(SUGAR_GLIDER_GRPC_ADDR) $(GRPC_SMOKE_ARGS)
+	@./scripts/dev/sugarglider/sugar_glider_grpc_smoke_test.sh --addr $(SUGAR_GLIDER_GRPC_ADDR) $(GRPC_SMOKE_ARGS)
 
 rtg-failure:
-	@./scripts/dev/sugar_glider_failure_test.sh --file $(RTG_COMPOSE_FILE) --url $(SUGAR_GLIDER_URL) $(FAILURE_ARGS)
+	@./scripts/dev/sugarglider/sugar_glider_failure_test.sh --file $(RTG_COMPOSE_FILE) --url $(SUGAR_GLIDER_URL) $(FAILURE_ARGS)
 
 rtg-gate:
 	@set -e; \

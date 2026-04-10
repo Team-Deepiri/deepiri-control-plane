@@ -126,7 +126,7 @@ Migration sensitivity:
 ### 4) Service alias + ops anchor points
 - Compose and operational scripts still keep sidecar aliasing:
   - `docker-compose.rtg-sugar-glider.local.yml` includes `synapse-sidecar` alias.
-  - `scripts/dev/preflight.sh` and `scripts/dev/stack_watchdog.sh` recognize sidecar naming.
+  - `scripts/dev/sugarglider/preflight.sh` and `scripts/dev/sugarglider/stack_watchdog.sh` recognize sidecar naming.
 - Make targets preserve sidecar command surfaces:
   - `rtg-sidecar-*` targets in `Makefile`.
 

@@ -14,7 +14,7 @@ RUN_ONCE=false
 QUIET=false
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 
 log() {
     if [ "${QUIET}" = true ]; then
@@ -36,9 +36,9 @@ Options:
   -h, --help                    Show this help
 
 Examples:
-  ./scripts/dev/stack_watchdog.sh --once
-  ./scripts/dev/stack_watchdog.sh --interval 30
-  ./scripts/dev/stack_watchdog.sh --file docker-compose.dev.yml --once
+  ./scripts/dev/sugarglider/stack_watchdog.sh --once
+  ./scripts/dev/sugarglider/stack_watchdog.sh --interval 30
+  ./scripts/dev/sugarglider/stack_watchdog.sh --file docker-compose.dev.yml --once
 EOF
 }
 

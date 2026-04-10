@@ -83,7 +83,7 @@ main() {
     require_bin go
 
     local root_dir sugar_glider_dir consumer_arg
-    root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
     sugar_glider_dir="${root_dir}/platform-services/shared/deepiri-sugar-glider"
     consumer_arg="${CONSUMER}"
     if [ -z "${consumer_arg}" ]; then

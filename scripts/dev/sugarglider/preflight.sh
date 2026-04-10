@@ -13,7 +13,7 @@ REQUIRE_ENDPOINTS=false
 QUIET=false
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 
 FAILURES=0
 WARNINGS=0
@@ -32,9 +32,9 @@ Options:
   -h, --help                    Show this help
 
 Examples:
-  ./scripts/dev/preflight.sh
-  ./scripts/dev/preflight.sh --file docker-compose.dev.yml
-  ./scripts/dev/preflight.sh --require-endpoints
+  ./scripts/dev/sugarglider/preflight.sh
+  ./scripts/dev/sugarglider/preflight.sh --file docker-compose.dev.yml
+  ./scripts/dev/sugarglider/preflight.sh --require-endpoints
 EOF
 }
 
