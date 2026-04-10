@@ -190,7 +190,7 @@ def handle_repo(repo_name: str, index: int, total: int, draft: bool, dry_run: bo
     for c in commits[:10]:
         msg = c.get("commit", {}).get("message", "").split("\n")[0]
         body += f"- {msg}\n"
-    body += "\n🤖 Created with dev-to-main-pr.py"
+    body += "\n Created with dev-to-main-pr.py"
 
     if dry_run:
         print(f"  {Colors.YELLOW}[DRY RUN] Would create: '{title}'{Colors.NC}")
