@@ -60,13 +60,8 @@ scripts/
 - `sugarglider/sugar_glider_smoke_test.sh` - One-shot Sugar Glider publish/read/ack smoke test
 - `sugarglider/sugar_glider_grpc_smoke_test.sh` - One-shot Sugar Glider gRPC Health/Publish/Subscribe/Ack smoke test
 - `sugarglider/sugar_glider_failure_test.sh` - Redis outage/WAL replay + DLQ failure-path test
-- `sugarglider/sidecar_smoke_test.sh` - Legacy alias for `sugarglider/sugar_glider_smoke_test.sh`
-- `sugarglider/sidecar_grpc_smoke_test.sh` - Legacy alias for `sugarglider/sugar_glider_grpc_smoke_test.sh`
-- `sugarglider/sidecar_failure_test.sh` - Legacy alias for `sugarglider/sugar_glider_failure_test.sh`
 - `make rtg-sugar-gate` - Preferred local Sugar Glider fast gate
 - `make rtg-sugar-gate-full` - Preferred local Sugar Glider full gate (includes failure-path test)
-- `make rtg-sidecar-gate` - Legacy alias for `make rtg-sugar-gate`
-- `make rtg-sidecar-gate-full` - Legacy alias for `make rtg-sugar-gate-full`
 - `dev-start.js` - Development start script
 - `fix-dependencies.sh` - Fix npm/node dependencies
 

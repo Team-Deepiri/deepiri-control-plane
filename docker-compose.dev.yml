@@ -1091,6 +1091,47 @@ services:
     networks:
       - deepiri-dev-network
 
+  # Synapse Sugar Glider - stream transport service
+  synapse-sugar-glider:
+    build:
+      context: ./platform-services/shared/deepiri-sugar-glider
+      dockerfile: Dockerfile
+    image: deepiri-dev-synapse-sugar-glider:latest
+    pull_policy: never
+    container_name: deepiri-synapse-sugar-glider-dev
+    restart: unless-stopped
+    logging: *minimal-logging
+    ports:
+      - "8081:8081"
+      - "50051:50051"
+    environment:
+      SIDECAR_SERVICE_NAME: deepiri-platform
+      SIDECAR_REDIS_URL: redis://:redispassword@redis:6379/0
+      SIDECAR_LISTEN_ADDR: tcp://0.0.0.0:8081
+      SIDECAR_GRPC_ADDR: tcp://0.0.0.0:50051
+      SIDECAR_PUBLISH_STREAMS: platform-events,inference-events,model-events,training-events
+      SIDECAR_CONSUME_STREAMS: platform-events,inference-events,model-events,training-events
+      SIDECAR_MAX_STREAM_LEN: "10000"
+      SIDECAR_WAL_DIR: /data/synapse-wal
+      SIDECAR_WAL_REPLAY_BATCH: "100"
+      SIDECAR_WAL_REPLAY_INTERVAL_MS: "2000"
+      SIDECAR_DLQ_MAX_RETRIES: "3"
+      SIDECAR_DLQ_MIN_IDLE_MS: "30000"
+      SIDECAR_DLQ_SCAN_INTERVAL_MS: "5000"
+    volumes:
+      - synapse_sugar_glider_dev_wal:/data/synapse-wal
+    depends_on:
+      - redis
+    healthcheck:
+      test: ["CMD", "/app/sidecar", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      deepiri-dev-network:
+        aliases:
+          - synapse-sidecar
+
   # Jupyter Notebook for AI Research
   # DISABLED: No services depend on Jupyter - it's only for manual research/experimentation
   # jupyter:
@@ -1207,6 +1248,8 @@ volumes:
   etcd_dev_data:
     driver: local
   minio_dev_data:
+    driver: local
+  synapse_sugar_glider_dev_wal:
     driver: local
 
 networks:

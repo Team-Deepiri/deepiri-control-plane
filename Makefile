@@ -1,7 +1,7 @@
 # Deepiri Docker Compose Makefile
 # Makes rebuilding clean and easy
 
-.PHONY: rebuild clean build up down logs health heal rtg-up rtg-down rtg-logs rtg-health rtg-heal rtg-watchdog rtg-preflight rtg-smoke rtg-grpc-smoke rtg-failure rtg-gate rtg-gate-full rtg-sugar-up rtg-sugar-down rtg-sugar-logs rtg-sugar-health rtg-sugar-heal rtg-sugar-watchdog rtg-sugar-preflight rtg-sugar-smoke rtg-sugar-grpc-smoke rtg-sugar-failure rtg-sugar-gate rtg-sugar-gate-full rtg-sidecar-up rtg-sidecar-down rtg-sidecar-logs rtg-sidecar-health rtg-sidecar-heal rtg-sidecar-watchdog rtg-sidecar-preflight rtg-sidecar-smoke rtg-sidecar-grpc-smoke rtg-sidecar-failure rtg-sidecar-gate rtg-sidecar-gate-full
+.PHONY: rebuild clean build up down logs health heal rtg-up rtg-down rtg-logs rtg-health rtg-heal rtg-watchdog rtg-preflight rtg-smoke rtg-grpc-smoke rtg-failure rtg-gate rtg-gate-full rtg-sugar-up rtg-sugar-down rtg-sugar-logs rtg-sugar-health rtg-sugar-heal rtg-sugar-watchdog rtg-sugar-preflight rtg-sugar-smoke rtg-sugar-grpc-smoke rtg-sugar-failure rtg-sugar-gate rtg-sugar-gate-full
 
 RTG_SUGAR_COMPOSE_FILE := docker-compose.rtg-sugar-glider.local.yml
 RTG_LEGACY_COMPOSE_FILE := docker-compose.rtg-sidecar.local.yml
@@ -262,28 +262,3 @@ rtg-sugar-failure: rtg-failure
 rtg-sugar-gate: rtg-gate
 
 rtg-sugar-gate-full: rtg-gate-full
-
-# Sidecar naming aliases (legacy; kept for backward compatibility)
-rtg-sidecar-up: rtg-up
-
-rtg-sidecar-down: rtg-down
-
-rtg-sidecar-logs: rtg-logs
-
-rtg-sidecar-health: rtg-health
-
-rtg-sidecar-heal: rtg-heal
-
-rtg-sidecar-watchdog: rtg-watchdog
-
-rtg-sidecar-preflight: rtg-preflight
-
-rtg-sidecar-smoke: rtg-smoke
-
-rtg-sidecar-grpc-smoke: rtg-grpc-smoke
-
-rtg-sidecar-failure: rtg-failure
-
-rtg-sidecar-gate: rtg-gate
-
-rtg-sidecar-gate-full: rtg-gate-full
