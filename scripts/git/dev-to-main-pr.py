@@ -31,33 +31,6 @@ GITHUB_ORG = "Team-Deepiri"
 HEAD_BRANCH = "dev"
 BASE_BRANCH = "main"
 
-DEEPIRI_REPOS = [
-    "deepiri-modelkit",
-    "deepiri-language-intelligence-service",
-    "deepiri-external-bridge-service",
-    "deepiri-auth-service",
-    "deepiri-api-gateway",
-    "diri-helox",
-    "deepiri-web-frontend",
-    "deepiri-core-api",
-    "deepiri-gpu-utils",
-    "deepiri-dataset-processor",
-    "diri-agent-testing-utils",
-    "diri-cyrex",
-    "deepiri-uqe",
-    "deepiri-emotion-desktop",
-    "deepiri-zepgpu",
-    "deepiri-mudspeed",
-    "deepiri-prismpipe",
-    "deepiri-landing",
-    "deepiri-demo",
-    "deepiri-platform",
-    "diri-persola",
-    "deepiri-sorge",
-    "diri-agent-toolbox",
-    "deepiri-pkg-version-manager",
-]
-
 
 # ---------------------------------------------------------------------------
 # GitHub helpers (all via gh CLI, no local git needed)
@@ -75,6 +48,17 @@ def gh_api(path: str) -> tuple[int, any]:
         data = {}
     return result.returncode, data
 
+def get_org_repos() -> list[str]:
+    result = gh(
+        "api",
+        f"orgs/{GITHUB_ORG}/repos",
+        "--paginate",
+        "--jq", '.[] | select(.archived==false and .fork==false) | .name'
+    )
+    if result.returncode != 0:
+        print(f"{Colors.RED}Failed to fetch repos: {result.stderr}{Colors.NC}")
+        return []
+    return [r for r in result.stdout.strip().split("\n") if r]
 
 def check_gh_auth() -> bool:
     return gh("auth", "status").returncode == 0
@@ -206,7 +190,7 @@ def handle_repo(repo_name: str, index: int, total: int, draft: bool, dry_run: bo
     for c in commits[:10]:
         msg = c.get("commit", {}).get("message", "").split("\n")[0]
         body += f"- {msg}\n"
-    body += "\n🤖 Created with dev-to-main-pr.py"
+    body += "\n Created with dev-to-main-pr.py"
 
     if dry_run:
         print(f"  {Colors.YELLOW}[DRY RUN] Would create: '{title}'{Colors.NC}")
@@ -241,27 +225,32 @@ def main():
     if draft:
         print(f"{Colors.YELLOW}[DRAFT mode — PRs will be created as drafts]{Colors.NC}\n")
 
+    print(f"{Colors.CYAN}Fetching repositories from org...{Colors.NC}")
+    repos = get_org_repos()
+    if not repos:
+        print(f"{Colors.RED}No repositories found or failed to fetch.{Colors.NC}")
+        sys.exit(1)
     print(f"{Colors.CYAN}Targeting org: {Colors.BOLD}{GITHUB_ORG}{Colors.NC}")
-    print(f"{Colors.CYAN}Repos: {len(DEEPIRI_REPOS)} · {HEAD_BRANCH} → {BASE_BRANCH}{Colors.NC}\n")
+    print(f"{Colors.CYAN}Repos: {len(repos)} · {HEAD_BRANCH} → {BASE_BRANCH}{Colors.NC}\n")
 
     # Scope selection
-    print(f"{Colors.CYAN}Process all {len(DEEPIRI_REPOS)} repos? [Y/n/select]: {Colors.NC}", end="")
+    print(f"{Colors.CYAN}Process all {len(repos)} repos? [Y/n/select]: {Colors.NC}", end="")
     scope = input().strip().lower()
 
     if scope == "n":
         print(f"{Colors.YELLOW}Aborted.{Colors.NC}")
         sys.exit(0)
 
-    selected = list(DEEPIRI_REPOS)
+    selected = list(repos)
     if scope == "select":
         print(f"\n{Colors.CYAN}Select repos (comma-separated numbers):{Colors.NC}")
-        for i, r in enumerate(DEEPIRI_REPOS):
+        for i, r in enumerate(repos):
             print(f"  {Colors.BLUE}{i + 1}){Colors.NC} {r}")
         print(f"{Colors.CYAN}Selection: {Colors.NC}", end="")
         sel = input().strip()
         try:
             indices = [int(x.strip()) - 1 for x in sel.split(",")]
-            selected = [DEEPIRI_REPOS[i] for i in indices if 0 <= i < len(DEEPIRI_REPOS)]
+            selected = [repos[i] for i in indices if 0 <= i < len(repos)]
         except ValueError:
             print(f"{Colors.RED}Invalid selection, processing all.{Colors.NC}")
 
