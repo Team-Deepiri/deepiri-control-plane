@@ -92,6 +92,8 @@ Quick navigation to all documentation organized by category.
 | [development/QUICK_SUBMODULE_INIT.md](development/QUICK_SUBMODULE_INIT.md) | Quick submodule initialization |
 | [development/START_EVERYTHING.md](development/START_EVERYTHING.md) | Start everything guide |
 | [development/STREAMING_IMPLEMENTATION_COMPLETE.md](development/STREAMING_IMPLEMENTATION_COMPLETE.md) | Streaming implementation guide |
+| [development/SUGAR_GLIDER_IMPLEMENTATION_REPRODUCIBLE_PROCESS.md](development/SUGAR_GLIDER_IMPLEMENTATION_REPRODUCIBLE_PROCESS.md) | Reproducible Sugar Glider implementation process |
+| [development/SUGAR_GLIDER_BENCHMARKING_REPRODUCIBLE_PROCESS.md](development/SUGAR_GLIDER_BENCHMARKING_REPRODUCIBLE_PROCESS.md) | Reproducible Sugar Glider benchmarking process |
 | [development/SUBMODULE_UPDATES_SUMMARY.md](development/SUBMODULE_UPDATES_SUMMARY.md) | Submodule updates summary |
 | [development/SYNAPSE_INTEGRATION_GUIDE.md](development/SYNAPSE_INTEGRATION_GUIDE.md) | Synapse integration guide |
 
