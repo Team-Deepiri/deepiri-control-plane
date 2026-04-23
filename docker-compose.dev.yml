@@ -319,6 +319,8 @@ services:
     build:
       context: ./platform-services
       dockerfile: backend/deepiri-api-gateway/Dockerfile
+      secrets:
+        - github_token
     image: deepiri-dev-api-gateway:latest
     pull_policy: never
     container_name: deepiri-api-gateway-dev
@@ -365,6 +367,8 @@ services:
     build:
       context: ./platform-services
       dockerfile: backend/deepiri-auth-service/Dockerfile
+      secrets:
+        - github_token
     image: deepiri-dev-auth-service:latest
     pull_policy: never
     container_name: deepiri-auth-service-dev
@@ -389,9 +393,7 @@ services:
     volumes:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
       - ./ops/k8s/secrets:/k8s-secrets:ro
-      - shared_utils_node_modules:/shared-utils/node_modules
-      - /app/node_modules
-    command: sh -c "cd /shared-utils && if [ ! -d node_modules ] || [ -z \"$(ls -A node_modules 2>/dev/null)\" ]; then npm install --legacy-peer-deps --unsafe-perm && npm run build && chown -R nodejs:nodejs node_modules 2>/dev/null || true; fi && cd /app && rm -rf node_modules 2>/dev/null || true && npm cache clean --force && npm install --legacy-peer-deps file:/shared-utils && (if [ -f /usr/local/bin/prisma-baseline.sh ]; then /usr/local/bin/prisma-baseline.sh; else echo '[Prisma Baseline] Script not found, skipping baseline (rebuild image to enable)'; npx prisma migrate deploy || true; fi) && npx prisma generate && npm run dev"
+    command: sh -c "(if [ -f /usr/local/bin/prisma-baseline.sh ]; then /usr/local/bin/prisma-baseline.sh; else echo '[Prisma Baseline] Script not found, skipping baseline (rebuild image to enable)'; npx prisma migrate deploy || true; fi) && npx prisma generate && npm run dev"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
       interval: 30s
@@ -410,6 +412,8 @@ services:
     build:
       context: ./platform-services
       dockerfile: backend/deepiri-task-orchestrator/Dockerfile
+      secrets:
+        - github_token
     image: deepiri-dev-task-orchestrator:latest
     pull_policy: never
     container_name: deepiri-task-orchestrator-dev
@@ -442,6 +446,8 @@ services:
     build:
       context: ./platform-services
       dockerfile: backend/deepiri-engagement-service/Dockerfile
+      secrets:
+        - github_token
     image: deepiri-dev-engagement-service:latest
     pull_policy: never
     container_name: deepiri-engagement-service-dev
@@ -474,6 +480,8 @@ services:
     build:
       context: ./platform-services
       dockerfile: backend/deepiri-platform-analytics-service/Dockerfile
+      secrets:
+        - github_token
     image: deepiri-dev-platform-analytics-service:latest
     pull_policy: never
     container_name: deepiri-platform-analytics-service-dev
@@ -506,6 +514,8 @@ services:
     build:
       context: ./platform-services
       dockerfile: backend/deepiri-notification-service/Dockerfile
+      secrets:
+        - github_token
     image: deepiri-dev-notification-service:latest
     pull_policy: never
     container_name: deepiri-notification-service-dev
@@ -537,6 +547,8 @@ services:
     build:
       context: ./platform-services
       dockerfile: backend/deepiri-external-bridge-service/Dockerfile
+      secrets:
+        - github_token
     image: deepiri-dev-external-bridge-service:latest
     pull_policy: never
     container_name: deepiri-external-bridge-service-dev
@@ -583,6 +595,8 @@ services:
     build:
       context: ./platform-services
       dockerfile: backend/deepiri-challenge-service/Dockerfile
+      secrets:
+        - github_token
     image: deepiri-dev-challenge-service:latest
     pull_policy: never
     container_name: deepiri-challenge-service-dev
@@ -615,6 +629,8 @@ services:
     build:
       context: ./platform-services
       dockerfile: backend/deepiri-language-intelligence-service/Dockerfile
+      secrets:
+        - github_token
     image: deepiri-dev-language-intelligence-service:latest
     pull_policy: never
     container_name: deepiri-language-intelligence-service-dev
@@ -645,9 +661,7 @@ services:
       - ./ops/k8s/secrets:/k8s-secrets:ro
       - ./platform-services/backend/deepiri-language-intelligence-service/src:/app/src
       - ./platform-services/backend/deepiri-language-intelligence-service/tsconfig.json:/app/tsconfig.json
-      - shared_utils_node_modules:/shared-utils/node_modules
-      - /app/node_modules
-    command: sh -c "cd /shared-utils && if [ ! -d node_modules ] || [ -z \"$(ls -A node_modules 2>/dev/null)\" ]; then npm install --legacy-peer-deps --unsafe-perm && npm run build && chown -R nodejs:nodejs node_modules 2>/dev/null || true; fi && cd /app && rm -rf node_modules 2>/dev/null || true && npm cache clean --force && npm install --legacy-peer-deps file:/shared-utils && (if [ -f /usr/local/bin/prisma-baseline.sh ]; then /usr/local/bin/prisma-baseline.sh; else echo '[Prisma Baseline] Script not found, skipping baseline (rebuild image to enable)'; npx prisma migrate deploy || true; fi) && npx prisma generate && npm run dev"
+    command: sh -c "(if [ -f /usr/local/bin/prisma-baseline.sh ]; then /usr/local/bin/prisma-baseline.sh; else echo '[Prisma Baseline] Script not found, skipping baseline (rebuild image to enable)'; npx prisma migrate deploy || true; fi) && npx prisma generate && npm run dev"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5003/health"]
       interval: 30s
@@ -669,6 +683,8 @@ services:
     build:
       context: ./platform-services
       dockerfile: backend/deepiri-messaging-service/Dockerfile
+      secrets:
+        - github_token
     image: deepiri-dev-messaging-service:latest
     pull_policy: never
     container_name: deepiri-messaging-service-dev
@@ -691,9 +707,7 @@ services:
       - ./ops/k8s/secrets:/k8s-secrets:ro
       - ./platform-services/backend/deepiri-messaging-service/src:/app/src
       - ./platform-services/backend/deepiri-messaging-service/tsconfig.json:/app/tsconfig.json
-      - shared_utils_node_modules:/shared-utils/node_modules
-      - /app/node_modules
-    command: sh -c "cd /shared-utils && if [ ! -d node_modules ] || [ -z \"$(ls -A node_modules 2>/dev/null)\" ]; then npm install --legacy-peer-deps --unsafe-perm && npm run build && chown -R nodejs:nodejs node_modules 2>/dev/null || true; fi && cd /app && rm -rf node_modules 2>/dev/null || true && npm cache clean --force && npm install --legacy-peer-deps file:/shared-utils && (if [ -f /usr/local/bin/prisma-baseline.sh ]; then /usr/local/bin/prisma-baseline.sh; else echo '[Prisma Baseline] Script not found, skipping baseline (rebuild image to enable)'; npx prisma migrate deploy || true; fi) && npx prisma generate && npm run dev"
+    command: sh -c "(if [ -f /usr/local/bin/prisma-baseline.sh ]; then /usr/local/bin/prisma-baseline.sh; else echo '[Prisma Baseline] Script not found, skipping baseline (rebuild image to enable)'; npx prisma migrate deploy || true; fi) && npx prisma generate && npm run dev"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5010/health"]
       interval: 30s
@@ -715,6 +729,8 @@ services:
     build:
       context: ./platform-services
       dockerfile: backend/deepiri-realtime-gateway/Dockerfile
+      secrets:
+        - github_token
     image: deepiri-dev-realtime-gateway:latest
     pull_policy: never
     container_name: deepiri-realtime-gateway-dev
@@ -1259,8 +1275,6 @@ volumes:
     driver: local
   redis_dev_data:
     driver: local
-  shared_utils_node_modules:
-    driver: local
   mlflow_dev_data:
     driver: local
   influxdb_dev_data:
@@ -1281,3 +1295,7 @@ volumes:
 networks:
   deepiri-dev-network:
     driver: bridge
+
+secrets:
+  github_token:
+    environment: GITHUB_TOKEN
