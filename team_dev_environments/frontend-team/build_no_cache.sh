@@ -23,6 +23,12 @@ SERVICES=(
   postgres-intelligence
 )
 
+if [ -z "${GITHUB_TOKEN:-}" ]; then
+  echo "❌ GITHUB_TOKEN is required to install @team-deepiri/shared-utils from GitHub Packages."
+  echo "   Create a token with read:packages access, then run: export GITHUB_TOKEN=..."
+  exit 1
+fi
+
 echo "🔨 Building Frontend Team services (No Cache)..."
 echo "   (Using docker-compose.dev.yml with service selection)"
 echo "   Services: ${SERVICES[*]}"
@@ -33,4 +39,3 @@ docker compose -f docker-compose.dev.yml build --no-cache "${SERVICES[@]}"
 
 echo "✅ Frontend Team services built successfully!"
 echo "   Built services: ${SERVICES[*]}"
-

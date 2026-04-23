@@ -20,6 +20,12 @@ SERVICES=(
   # deepiri-prismpipe  # PrismPipe - Capability-Routed API Pipeline (Coming Soon)
 )
 
+if [ -z "${GITHUB_TOKEN:-}" ]; then
+  echo "❌ GITHUB_TOKEN is required to install @team-deepiri/shared-utils from GitHub Packages."
+  echo "   Create a token with read:packages access, then run: export GITHUB_TOKEN=..."
+  exit 1
+fi
+
 echo "🔨 Building AI Team services (No Cache)..."
 echo "   (Using docker-compose.dev.yml with service selection)"
 echo "   Services: ${SERVICES[*]}"
@@ -34,4 +40,3 @@ echo ""
 docker compose -f docker-compose.dev.yml build --no-cache "${SERVICES[@]}"
 
 echo "✅ AI Team services built successfully!"
-

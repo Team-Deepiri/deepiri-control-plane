@@ -10,6 +10,12 @@ cd "$(dirname "$0")/../.." || exit 1
 export DOCKER_BUILDKIT=1
 export COMPOSE_DOCKER_CLI_BUILD=1
 
+if [ -z "${GITHUB_TOKEN:-}" ]; then
+  echo "❌ GITHUB_TOKEN is required to install @team-deepiri/shared-utils from GitHub Packages."
+  echo "   Create a token with read:packages access, then run: export GITHUB_TOKEN=..."
+  exit 1
+fi
+
 echo "🔨 Building Platform Engineers services (All Services, No Cache)..."
 echo "   (Using docker-compose.dev.yml)"
 echo ""
@@ -18,4 +24,3 @@ echo ""
 docker compose -f docker-compose.dev.yml build --no-cache
 
 echo "✅ Platform Engineers services built successfully!"
-

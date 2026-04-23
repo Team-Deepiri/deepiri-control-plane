@@ -6,12 +6,9 @@ set -e
 
 cd "$(dirname "$0")/../.." || exit 1
 
-# Force legacy builder. Docker Desktop / WSL2 on Windows hosts hits a
-# BuildKit snapshot-commit bug ("snapshot does not exist: not found")
-# that also masks real errors as generic "runc process is already dead".
-# The legacy builder is slower but reliable.
-export DOCKER_BUILDKIT=0
-export COMPOSE_DOCKER_CLI_BUILD=0
+# BuildKit is required for Docker secrets used by private GitHub Packages.
+export DOCKER_BUILDKIT=1
+export COMPOSE_DOCKER_CLI_BUILD=1
 
 # AI team services
 SERVICES=(
@@ -22,6 +19,12 @@ SERVICES=(
   ollama synapse
   # deepiri-prismpipe  # PrismPipe - Capability-Routed API Pipeline (Coming Soon)
 )
+
+if [ -z "${GITHUB_TOKEN:-}" ]; then
+  echo "❌ GITHUB_TOKEN is required to install @team-deepiri/shared-utils from GitHub Packages."
+  echo "   Create a token with read:packages access, then run: export GITHUB_TOKEN=..."
+  exit 1
+fi
 
 echo "🔨 Building AI Team services..."
 echo "   (Using docker-compose.dev.yml with service selection)"
