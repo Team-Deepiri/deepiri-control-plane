@@ -319,6 +319,8 @@ services:
     build:
       context: ./platform-services
       dockerfile: backend/deepiri-api-gateway/Dockerfile
+      secrets:
+        - github_token
     image: deepiri-dev-api-gateway:latest
     pull_policy: never
     container_name: deepiri-api-gateway-dev
@@ -365,6 +367,8 @@ services:
     build:
       context: ./platform-services
       dockerfile: backend/deepiri-auth-service/Dockerfile
+      secrets:
+        - github_token
     image: deepiri-dev-auth-service:latest
     pull_policy: never
     container_name: deepiri-auth-service-dev
@@ -408,6 +412,8 @@ services:
     build:
       context: ./platform-services
       dockerfile: backend/deepiri-task-orchestrator/Dockerfile
+      secrets:
+        - github_token
     image: deepiri-dev-task-orchestrator:latest
     pull_policy: never
     container_name: deepiri-task-orchestrator-dev
@@ -440,6 +446,8 @@ services:
     build:
       context: ./platform-services
       dockerfile: backend/deepiri-engagement-service/Dockerfile
+      secrets:
+        - github_token
     image: deepiri-dev-engagement-service:latest
     pull_policy: never
     container_name: deepiri-engagement-service-dev
@@ -472,6 +480,8 @@ services:
     build:
       context: ./platform-services
       dockerfile: backend/deepiri-platform-analytics-service/Dockerfile
+      secrets:
+        - github_token
     image: deepiri-dev-platform-analytics-service:latest
     pull_policy: never
     container_name: deepiri-platform-analytics-service-dev
@@ -504,6 +514,8 @@ services:
     build:
       context: ./platform-services
       dockerfile: backend/deepiri-notification-service/Dockerfile
+      secrets:
+        - github_token
     image: deepiri-dev-notification-service:latest
     pull_policy: never
     container_name: deepiri-notification-service-dev
@@ -535,6 +547,8 @@ services:
     build:
       context: ./platform-services
       dockerfile: backend/deepiri-external-bridge-service/Dockerfile
+      secrets:
+        - github_token
     image: deepiri-dev-external-bridge-service:latest
     pull_policy: never
     container_name: deepiri-external-bridge-service-dev
@@ -581,6 +595,8 @@ services:
     build:
       context: ./platform-services
       dockerfile: backend/deepiri-challenge-service/Dockerfile
+      secrets:
+        - github_token
     image: deepiri-dev-challenge-service:latest
     pull_policy: never
     container_name: deepiri-challenge-service-dev
@@ -613,6 +629,8 @@ services:
     build:
       context: ./platform-services
       dockerfile: backend/deepiri-language-intelligence-service/Dockerfile
+      secrets:
+        - github_token
     image: deepiri-dev-language-intelligence-service:latest
     pull_policy: never
     container_name: deepiri-language-intelligence-service-dev
@@ -665,6 +683,8 @@ services:
     build:
       context: ./platform-services
       dockerfile: backend/deepiri-messaging-service/Dockerfile
+      secrets:
+        - github_token
     image: deepiri-dev-messaging-service:latest
     pull_policy: never
     container_name: deepiri-messaging-service-dev
@@ -709,6 +729,8 @@ services:
     build:
       context: ./platform-services
       dockerfile: backend/deepiri-realtime-gateway/Dockerfile
+      secrets:
+        - github_token
     image: deepiri-dev-realtime-gateway:latest
     pull_policy: never
     container_name: deepiri-realtime-gateway-dev
@@ -1273,3 +1295,7 @@ volumes:
 networks:
   deepiri-dev-network:
     driver: bridge
+
+secrets:
+  github_token:
+    environment: GITHUB_TOKEN
