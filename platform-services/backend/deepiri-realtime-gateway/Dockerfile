@@ -1,3 +1,14 @@
+# Build shared-utils first
+FROM node:18-alpine AS shared-utils-builder
+WORKDIR /shared-utils
+COPY shared/deepiri-shared-utils/package.json ./
+COPY shared/deepiri-shared-utils/package-lock.json ./
+COPY shared/deepiri-shared-utils/tsconfig.json ./
+COPY shared/deepiri-shared-utils/src ./src
+
+RUN rm -f package-lock.json && rm -f package-lock.json && npm install --legacy-peer-deps \
+ && npm run build
+
 # Build the service
 FROM ghcr.io/team-deepiri/deepiri-base:18-alpine
 
@@ -12,6 +23,8 @@ RUN --mount=type=secret,id=github_token \
  && npm install --legacy-peer-deps \
  && npm cache clean --force \
  && echo "@team-deepiri:registry=https://npm.pkg.github.com" > .npmrc
+RUN rm -f package-lock.json && rm -f package-lock.json && npm install --legacy-peer-deps file:/shared-utils \
+ && npm cache clean --force
 
 # Copy source files
 COPY backend/deepiri-realtime-gateway/tsconfig.json ./
