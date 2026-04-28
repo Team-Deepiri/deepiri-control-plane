@@ -5,22 +5,24 @@ RUN mkdir -p /lib64 \
  && ln -sf /lib/x86_64-linux-gnu/ld-linux-x86-64.so.2 \
            /lib64/ld-linux-x86-64.so.2
 
+COPY shared/deepiri-shared-utils/package*.json /shared/deepiri-shared-utils/
+COPY shared/deepiri-shared-utils/tsconfig.json /shared/deepiri-shared-utils/
+COPY shared/deepiri-shared-utils/src /shared/deepiri-shared-utils/src
 # Package files
 COPY backend/deepiri-task-orchestrator/package*.json ./
 COPY backend/deepiri-task-orchestrator/tsconfig.json ./
 
 # SINGLE atomic dependency install
-RUN --mount=type=secret,id=github_token \
-    { echo "@team-deepiri:registry=https://npm.pkg.github.com"; \
-      echo "//npm.pkg.github.com/:_authToken=$(cat /run/secrets/github_token)"; \
-    } > .npmrc \
- && npm config set fetch-retries 5 \
+RUN npm config set fetch-retries 5 \
  && npm config set fetch-retry-mintimeout 20000 \
  && npm config set fetch-retry-maxtimeout 120000 \
  && npm config set fetch-timeout 300000 \
+ && cd /shared/deepiri-shared-utils \
  && npm install --legacy-peer-deps \
- && npm cache clean --force \
- && echo "@team-deepiri:registry=https://npm.pkg.github.com" > .npmrc
+ && npm run build \
+ && cd /app \
+ && npm install --legacy-peer-deps \
+ && npm cache clean --force
 
 # Source + Prisma schema
 COPY backend/deepiri-task-orchestrator/src ./src
