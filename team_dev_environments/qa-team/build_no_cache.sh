@@ -6,13 +6,13 @@ set -e
 
 cd "$(dirname "$0")/../.." || exit 1
 
-# Enable BuildKit for better builds
-export DOCKER_BUILDKIT=1
-export COMPOSE_DOCKER_CLI_BUILD=1
+# Force legacy builder for consistency with the normal team build flow.
+export DOCKER_BUILDKIT=0
+export COMPOSE_DOCKER_CLI_BUILD=0
 
 # QA team services (language-intelligence-service excluded - service directory is empty)
 SERVICES=(
-  postgres redis influxdb
+  postgres-auth postgres-core postgres-intelligence redis influxdb
   api-gateway auth-service task-orchestrator
   engagement-service platform-analytics-service
   notification-service external-bridge-service
@@ -37,4 +37,3 @@ echo "Services built:"
 for service in "${SERVICES[@]}"; do
   echo "  ✓ $service"
 done
-

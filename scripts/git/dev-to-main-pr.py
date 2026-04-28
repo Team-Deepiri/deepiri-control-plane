@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """
-Dev-to-Main PR Creator for Deepiri
-Always creates dev → main PRs across all repos via GitHub CLI.
+Branch-merge PR Creator for Deepiri (can be Dev-to-Main or Main-to-Dev)
+Creates PRs between two branches across the repos via GitHub CLI.
 No local clones required — operates entirely through the GitHub API.
 
 All PRs are automatically merged after creation.
 
 Usage:
-  python dev-to-main-pr.py              # process all repos
-  python dev-to-main-pr.py --draft    # create PRs as drafts
-  python dev-to-main-pr.py --dry-run   # preview only, no PRs created
+    python dev-to-main-pr.py                     # default: dev → main
+    python dev-to-main-pr.py --draft             # create PRs as drafts
+    python dev-to-main-pr.py --dry-run           # preview only, no PRs created
+    python dev-to-main-pr.py --backwards         # reverse: main → dev
 """
 import json
 import subprocess
@@ -32,6 +33,7 @@ GITHUB_ORG = "Team-Deepiri"
 HEAD_BRANCH = "dev"
 BASE_BRANCH = "main"
 
+
 # ---------------------------------------------------------------------------
 # GitHub helpers (all via gh CLI, no local git needed)
 # ---------------------------------------------------------------------------
@@ -48,6 +50,17 @@ def gh_api(path: str) -> tuple[int, Any]:
         data = {}
     return result.returncode, data
 
+def get_org_repos() -> list[str]:
+    result = gh(
+        "api",
+        f"orgs/{GITHUB_ORG}/repos",
+        "--paginate",
+        "--jq", '.[] | select(.archived==false and .fork==false) | .name'
+    )
+    if result.returncode != 0:
+        print(f"{Colors.RED}Failed to fetch repos: {result.stderr}{Colors.NC}")
+        return []
+    return [r for r in result.stdout.strip().split("\n") if r]
 
 def check_gh_auth() -> bool:
     return gh("auth", "status").returncode == 0
@@ -142,10 +155,11 @@ def get_all_repos() -> list[str]:
 # ---------------------------------------------------------------------------
 
 def print_banner(num_repos: int):
+    direction = f"{HEAD_BRANCH} → {BASE_BRANCH}"
     print(f"{Colors.CYAN}")
     print(f"╔{'═'*60}╗")
     print(f"║{'  Dev → Main PR Creator (Deepiri)  ':^60}║")
-    print(f"║{f'  {num_repos} repos · dev → main · GitHub API  ':^60}║")
+    print(f"║{f'  {num_repos} repos · {direction} · GitHub API  ':^60}║")
     print(f"╚{'═'*60}╝{Colors.NC}")
     print()
 
@@ -249,6 +263,12 @@ def handle_repo(repo_name: str, index: int, total: int, draft: bool, dry_run: bo
 def main():
     dry_run = "--dry-run" in sys.argv or "-n" in sys.argv
     draft = "--draft" in sys.argv or "-d" in sys.argv
+    backwards = "--backwards" in sys.argv
+
+    # Allow swapping the global HEAD/BASE branches when running backwards
+    global HEAD_BRANCH, BASE_BRANCH
+    if backwards:
+        HEAD_BRANCH, BASE_BRANCH = BASE_BRANCH, HEAD_BRANCH
 
     all_repos = get_all_repos()
     selected = list(all_repos)
@@ -263,6 +283,11 @@ def main():
     if draft:
         print(f"{Colors.YELLOW}[DRAFT mode — PRs will be created as drafts]{Colors.NC}\n")
 
+    print(f"{Colors.CYAN}Fetching repositories from org...{Colors.NC}")
+    repos = get_org_repos()
+    if not repos:
+        print(f"{Colors.RED}No repositories found or failed to fetch.{Colors.NC}")
+        sys.exit(1)
     print(f"{Colors.CYAN}Targeting org: {Colors.BOLD}{GITHUB_ORG}{Colors.NC}")
     print(f"{Colors.CYAN}Repos: {len(all_repos)} · {HEAD_BRANCH} → {BASE_BRANCH}{Colors.NC}\n")
 
@@ -274,6 +299,7 @@ def main():
         print(f"{Colors.YELLOW}Aborted.{Colors.NC}")
         sys.exit(0)
 
+    selected = list(all_repos)
     if scope == "select":
         print(f"\n{Colors.CYAN}Select repos (comma-separated numbers):{Colors.NC}")
         for i, r in enumerate(all_repos):
