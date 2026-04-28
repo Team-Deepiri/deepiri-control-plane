@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
 """
 Dev-to-Main PR Creator for Deepiri
-Always creates dev → main PRs across all 24 repos via GitHub CLI.
+Always creates dev → main PRs across all repos via GitHub CLI.
 No local clones required — operates entirely through the GitHub API.
+
+All PRs are automatically merged after creation.
 
 Usage:
   python dev-to-main-pr.py              # process all repos
-  python dev-to-main-pr.py --draft      # create PRs as drafts
-  python dev-to-main-pr.py --dry-run    # preview only, no PRs created
+  python dev-to-main-pr.py --draft    # create PRs as drafts
+  python dev-to-main-pr.py --dry-run   # preview only, no PRs created
 """
 import json
-import os
 import subprocess
 import sys
-from typing import Optional
+from typing import Any, Optional
 
 
 class Colors:
@@ -31,34 +32,6 @@ GITHUB_ORG = "Team-Deepiri"
 HEAD_BRANCH = "dev"
 BASE_BRANCH = "main"
 
-DEEPIRI_REPOS = [
-    "deepiri-modelkit",
-    "deepiri-language-intelligence-service",
-    "deepiri-external-bridge-service",
-    "deepiri-auth-service",
-    "deepiri-api-gateway",
-    "diri-helox",
-    "deepiri-web-frontend",
-    "deepiri-core-api",
-    "deepiri-gpu-utils",
-    "deepiri-dataset-processor",
-    "diri-agent-testing-utils",
-    "diri-cyrex",
-    "deepiri-uqe",
-    "deepiri-emotion-desktop",
-    "deepiri-zepgpu",
-    "deepiri-mudspeed",
-    "deepiri-prismpipe",
-    "deepiri-landing",
-    "deepiri-demo",
-    "deepiri-platform",
-    "diri-persola",
-    "deepiri-sorge",
-    "diri-agent-toolbox",
-    "deepiri-pkg-version-manager",
-]
-
-
 # ---------------------------------------------------------------------------
 # GitHub helpers (all via gh CLI, no local git needed)
 # ---------------------------------------------------------------------------
@@ -67,7 +40,7 @@ def gh(*args: str) -> subprocess.CompletedProcess:
     return subprocess.run(["gh"] + list(args), capture_output=True, text=True)
 
 
-def gh_api(path: str) -> tuple[int, any]:
+def gh_api(path: str) -> tuple[int, Any]:
     result = subprocess.run(["gh", "api", path], capture_output=True, text=True)
     try:
         data = json.loads(result.stdout) if result.stdout.strip() else {}
@@ -131,15 +104,48 @@ def create_pr(repo_name: str, title: str, body: str, draft: bool = False) -> tup
     return False, (result.stderr or result.stdout).strip()
 
 
+def enable_auto_merge(repo_name: str, pr_url: str) -> tuple[bool, str]:
+    repo = repo_slug(repo_name)
+    pr_number = pr_url.split("/")[-1]
+
+    result = subprocess.run(
+        ["gh", "api", f"repos/{repo}/pulls/{pr_number}/auto_merge",
+         "-X", "PUT",
+         "-f", "merge_method=squash"],
+        capture_output=True, text=True
+    )
+    if result.returncode == 0:
+        return True, "Auto-merge enabled"
+    return False, (result.stderr or result.stdout).strip()
+
+# Dynamically list all Deepiri repos
+
+def get_all_repos() -> list[str]:
+    # Logic to make sure this still works over 100 repos
+    repos = []
+    page = 1
+
+    while True:
+        code, data = gh_api(f"orgs/{GITHUB_ORG}/repos?per_page=100&page={page}")
+        if code != 0 or not isinstance(data, list) or not data:
+            break
+
+        repos.extend([repo["name"] for repo in data])
+        page += 1
+
+    return repos
+
+
+
 # ---------------------------------------------------------------------------
 # Display helpers
 # ---------------------------------------------------------------------------
 
-def print_banner():
+def print_banner(num_repos: int):
     print(f"{Colors.CYAN}")
     print(f"╔{'═'*60}╗")
     print(f"║{'  Dev → Main PR Creator (Deepiri)  ':^60}║")
-    print(f"║{'  24 repos · dev → main · GitHub API  ':^60}║")
+    print(f"║{f'  {num_repos} repos · dev → main · GitHub API  ':^60}║")
     print(f"╚{'═'*60}╝{Colors.NC}")
     print()
 
@@ -171,8 +177,14 @@ def handle_repo(repo_name: str, index: int, total: int, draft: bool, dry_run: bo
     # Check existing PR
     existing = pr_exists(repo_name, HEAD_BRANCH, BASE_BRANCH)
     if existing:
-        print(f"  {Colors.YELLOW}PR already exists: {existing}{Colors.NC}")
-        return {"repo": repo_name, "status": "exists", "url": existing}
+        print(f"  {Colors.GRAY}PR exists, enabling auto-merge...{Colors.NC}")
+        ok, msg = enable_auto_merge(repo_name, existing)
+        if ok:
+            print(f"  {Colors.GREEN}Auto-merge enabled on existing PR: {existing}{Colors.NC}")
+            return {"repo": repo_name, "status": "auto_merged", "url": existing}
+        else:
+            print(f"  {Colors.YELLOW}Auto-merge failed: {msg}{Colors.NC}")
+            return {"repo": repo_name, "status": "exists", "url": existing, "auto_merge_error": msg}
 
     # Compare branches
     print(f"  {Colors.GRAY}Comparing {HEAD_BRANCH}...{BASE_BRANCH}...{Colors.NC}", end="", flush=True)
@@ -206,17 +218,25 @@ def handle_repo(repo_name: str, index: int, total: int, draft: bool, dry_run: bo
     for c in commits[:10]:
         msg = c.get("commit", {}).get("message", "").split("\n")[0]
         body += f"- {msg}\n"
-    body += "\n🤖 Created with dev-to-main-pr.py"
+    body += "\nCreated with dev-to-main-pr.py"
 
     if dry_run:
-        print(f"  {Colors.YELLOW}[DRY RUN] Would create: '{title}'{Colors.NC}")
+        print(f"  {Colors.YELLOW}[DRY RUN] Would create PR and auto-merge: '{title}'{Colors.NC}")
         return {"repo": repo_name, "status": "dry_run", "title": title}
 
     print(f"  {Colors.GRAY}Creating PR...{Colors.NC}")
     ok, url_or_err = create_pr(repo_name, title, body, draft=draft)
     if ok:
         print(f"  {Colors.GREEN}PR created: {url_or_err}{Colors.NC}")
-        return {"repo": repo_name, "status": "created", "url": url_or_err}
+
+        print(f"  {Colors.GRAY}Enabling auto-merge...{Colors.NC}")
+        ok_am, msg_am = enable_auto_merge(repo_name, url_or_err)
+        if ok_am:
+            print(f"  {Colors.GREEN}Auto-merge enabled: {url_or_err}{Colors.NC}")
+            return {"repo": repo_name, "status": "auto_merged", "url": url_or_err}
+        else:
+            print(f"  {Colors.YELLOW}Auto-merge failed: {msg_am}{Colors.NC}")
+            return {"repo": repo_name, "status": "created", "url": url_or_err, "auto_merge_error": msg_am}
     else:
         print(f"  {Colors.RED}Failed: {url_or_err}{Colors.NC}")
         return {"repo": repo_name, "status": "failed", "error": url_or_err}
@@ -230,8 +250,10 @@ def main():
     dry_run = "--dry-run" in sys.argv or "-n" in sys.argv
     draft = "--draft" in sys.argv or "-d" in sys.argv
 
-    print_banner()
-
+    all_repos = get_all_repos()
+    selected = list(all_repos)
+    print_banner(len(all_repos))
+    
     if not check_gh_auth():
         print(f"{Colors.RED}Error: GitHub CLI not authenticated. Run 'gh auth login' first.{Colors.NC}")
         sys.exit(1)
@@ -242,26 +264,25 @@ def main():
         print(f"{Colors.YELLOW}[DRAFT mode — PRs will be created as drafts]{Colors.NC}\n")
 
     print(f"{Colors.CYAN}Targeting org: {Colors.BOLD}{GITHUB_ORG}{Colors.NC}")
-    print(f"{Colors.CYAN}Repos: {len(DEEPIRI_REPOS)} · {HEAD_BRANCH} → {BASE_BRANCH}{Colors.NC}\n")
+    print(f"{Colors.CYAN}Repos: {len(all_repos)} · {HEAD_BRANCH} → {BASE_BRANCH}{Colors.NC}\n")
 
     # Scope selection
-    print(f"{Colors.CYAN}Process all {len(DEEPIRI_REPOS)} repos? [Y/n/select]: {Colors.NC}", end="")
+    print(f"{Colors.CYAN}Process all {len(all_repos)} repos? [Y/n/select]: {Colors.NC}", end="")
     scope = input().strip().lower()
 
     if scope == "n":
         print(f"{Colors.YELLOW}Aborted.{Colors.NC}")
         sys.exit(0)
 
-    selected = list(DEEPIRI_REPOS)
     if scope == "select":
         print(f"\n{Colors.CYAN}Select repos (comma-separated numbers):{Colors.NC}")
-        for i, r in enumerate(DEEPIRI_REPOS):
+        for i, r in enumerate(all_repos):
             print(f"  {Colors.BLUE}{i + 1}){Colors.NC} {r}")
         print(f"{Colors.CYAN}Selection: {Colors.NC}", end="")
         sel = input().strip()
         try:
             indices = [int(x.strip()) - 1 for x in sel.split(",")]
-            selected = [DEEPIRI_REPOS[i] for i in indices if 0 <= i < len(DEEPIRI_REPOS)]
+            selected = [all_repos[i] for i in indices if 0 <= i < len(all_repos)]
         except ValueError:
             print(f"{Colors.RED}Invalid selection, processing all.{Colors.NC}")
 
@@ -275,6 +296,7 @@ def main():
 
     # Summary
     groups = {
+        "auto_merged": (Colors.GREEN, "Auto-merged"),
         "created": (Colors.GREEN,  "Created"),
         "exists":  (Colors.YELLOW, "Already exists"),
         "dry_run": (Colors.YELLOW, "Dry-run"),
