@@ -1,17 +1,19 @@
 # Build the service
 FROM ghcr.io/team-deepiri/deepiri-base:18-alpine
 
+COPY shared/deepiri-shared-utils/package*.json /shared/deepiri-shared-utils/
+COPY shared/deepiri-shared-utils/tsconfig.json /shared/deepiri-shared-utils/
+COPY shared/deepiri-shared-utils/src /shared/deepiri-shared-utils/src
 # Copy package file. This service has no usable lockfile in the current branch.
 COPY backend/deepiri-realtime-gateway/package.json ./
 
 # SINGLE install step (this is the fix)
-RUN --mount=type=secret,id=github_token \
-    { echo "@team-deepiri:registry=https://npm.pkg.github.com"; \
-      echo "//npm.pkg.github.com/:_authToken=$(cat /run/secrets/github_token)"; \
-    } > .npmrc \
+RUN cd /shared/deepiri-shared-utils \
  && npm install --legacy-peer-deps \
- && npm cache clean --force \
- && echo "@team-deepiri:registry=https://npm.pkg.github.com" > .npmrc
+ && npm run build \
+ && cd /app \
+ && npm install --legacy-peer-deps \
+ && npm cache clean --force
 
 # Copy source files
 COPY backend/deepiri-realtime-gateway/tsconfig.json ./
