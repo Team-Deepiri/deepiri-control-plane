@@ -218,6 +218,7 @@ ensure_submodule_on_main "diri-helox"
 ensure_submodule_on_main "deepiri-modelkit"
 ensure_submodule_on_main "platform-services/backend/deepiri-language-intelligence-service"
 ensure_submodule_on_main "platform-services/shared/deepiri-prismpipe"
+ensure_submodule_on_main "platform-services/shared/deepiri-shared-utils"
 echo "    ✅ All submodules updated to main branch"
 echo ""
 
@@ -234,7 +235,7 @@ git submodule status diri-helox
 git submodule status deepiri-modelkit
 git submodule status platform-services/backend/deepiri-language-intelligence-service
 git submodule status platform-services/shared/deepiri-prismpipe
-git submodule status deepiri-shared-utils
+git submodule status platform-services/shared/deepiri-shared-utils
 echo ""
 
 echo "✅ All submodules ready!"
