@@ -173,45 +173,6 @@ build:
           - src: 'backend/deepiri-decision-intelligence/**/*.json'
             dest: /app/
     
-    # Microservices - Challenge Service
-    - image: deepiri-adaptive-experience-engine
-      context: ./platform-services
-      docker:
-        dockerfile: backend/deepiri-adaptive-experience-engine/Dockerfile
-        # cacheFrom removed - using local builds with Minikube
-      sync:
-        manual:
-          - src: 'backend/deepiri-adaptive-experience-engine/**/*.ts'
-            dest: /app/src/
-          - src: 'backend/deepiri-adaptive-experience-engine/**/*.json'
-            dest: /app/
-    
-    # Microservices - Engagement Service (Gamification)
-    - image: deepiri-engagement-service
-      context: ./platform-services
-      docker:
-        dockerfile: backend/deepiri-engagement-service/Dockerfile
-        # cacheFrom removed - using local builds with Minikube
-      sync:
-        manual:
-          - src: 'backend/deepiri-engagement-service/**/*.ts'
-            dest: /app/src/
-          - src: 'backend/deepiri-engagement-service/**/*.json'
-            dest: /app/
-    
-    # Microservices - Platform Analytics Service
-    - image: deepiri-platform-analytics-service
-      context: ./platform-services
-      docker:
-        dockerfile: backend/deepiri-platform-analytics-service/Dockerfile
-        # cacheFrom removed - using local builds with Minikube
-      sync:
-        manual:
-          - src: 'backend/deepiri-platform-analytics-service/**/*.ts'
-            dest: /app/src/
-          - src: 'backend/deepiri-platform-analytics-service/**/*.json'
-            dest: /app/
-    
     # Microservices - External Bridge Service
     - image: deepiri-external-bridge-service
       context: ./platform-services
