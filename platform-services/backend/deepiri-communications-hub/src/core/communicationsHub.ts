@@ -170,7 +170,7 @@ export class CommunicationsHub {
 
     const rawAllowlist = process.env.WEBHOOK_HOST_ALLOWLIST;
     if (!rawAllowlist) {
-      return true;
+      return false;
     }
 
     const allowedHosts = rawAllowlist
@@ -179,7 +179,7 @@ export class CommunicationsHub {
       .filter(Boolean);
 
     if (allowedHosts.length === 0) {
-      return true;
+      return false;
     }
 
     return allowedHosts.includes(parsed.hostname.toLowerCase());
