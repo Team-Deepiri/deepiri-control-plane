@@ -121,8 +121,82 @@ export class CommunicationsHub {
     };
   }
 
+  private isPrivateOrLocalAddress(hostname: string): boolean {
+    const normalized = hostname.trim().toLowerCase();
+    if (normalized === 'localhost' || normalized === '::1') {
+      return true;
+    }
+
+    const ipv4Match = normalized.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    if (ipv4Match) {
+      const octets = ipv4Match.slice(1).map(Number);
+      if (octets.some(o => o < 0 || o > 255)) {
+        return true;
+      }
+
+      const [a, b] = octets;
+      return (
+        a === 10 ||
+        a === 127 ||
+        (a === 169 && b === 254) ||
+        (a === 172 && b >= 16 && b <= 31) ||
+        (a === 192 && b === 168) ||
+        a === 0
+      );
+    }
+
+    return false;
+  }
+
+  private isAllowedWebhookUrl(rawUrl: string): boolean {
+    let parsed: URL;
+    try {
+      parsed = new URL(rawUrl);
+    } catch {
+      return false;
+    }
+
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      return false;
+    }
+
+    if (parsed.username || parsed.password) {
+      return false;
+    }
+
+    if (this.isPrivateOrLocalAddress(parsed.hostname)) {
+      return false;
+    }
+
+    const rawAllowlist = process.env.WEBHOOK_HOST_ALLOWLIST;
+    if (!rawAllowlist) {
+      return true;
+    }
+
+    const allowedHosts = rawAllowlist
+      .split(',')
+      .map(h => h.trim().toLowerCase())
+      .filter(Boolean);
+
+    if (allowedHosts.length === 0) {
+      return true;
+    }
+
+    return allowedHosts.includes(parsed.hostname.toLowerCase());
+  }
+
   private async sendWebhook(pPayload: MessagePayload): Promise<DeliveryStatus> {
     try {
+      if (!this.isAllowedWebhookUrl(pPayload.recipient)) {
+        return {
+          messageId: pPayload.id,
+          status: 'failed',
+          timestamp: new Date().toISOString(),
+          channel: 'webhook',
+          error: 'Invalid or disallowed webhook URL'
+        };
+      }
+
       await axios.post(pPayload.recipient, {
         message: pPayload.body,
         metadata: pPayload.metadata
