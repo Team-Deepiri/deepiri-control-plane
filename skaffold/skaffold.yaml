@@ -125,30 +125,65 @@ build:
           - src: 'backend/deepiri-auth-service/**/*.json'
             dest: /app/
     
-    # Microservices - Task Orchestrator
-    - image: deepiri-task-orchestrator
+# Microservices - Workflow Orchestrator
+    - image: deepiri-workflow-orchestrator
       context: ./platform-services
       docker:
-        dockerfile: backend/deepiri-task-orchestrator/Dockerfile
-        # cacheFrom removed - using local builds with Minikube
+        dockerfile: backend/deepiri-workflow-orchestrator/Dockerfile
       sync:
         manual:
-          - src: 'backend/deepiri-task-orchestrator/**/*.ts'
+          - src: 'backend/deepiri-workflow-orchestrator/**/*.ts'
             dest: /app/src/
-          - src: 'backend/deepiri-task-orchestrator/**/*.json'
+          - src: 'backend/deepiri-workflow-orchestrator/**/*.json'
+            dest: /app/
+    
+    # Microservices - Adaptive Experience Engine
+    - image: deepiri-adaptive-experience-engine
+      context: ./platform-services
+      docker:
+        dockerfile: backend/deepiri-adaptive-experience-engine/Dockerfile
+      sync:
+        manual:
+          - src: 'backend/deepiri-adaptive-experience-engine/**/*.ts'
+            dest: /app/src/
+          - src: 'backend/deepiri-adaptive-experience-engine/**/*.json'
+            dest: /app/
+    
+    # Microservices - Incentive Engine
+    - image: deepiri-incentive-engine
+      context: ./platform-services
+      docker:
+        dockerfile: backend/deepiri-incentive-engine/Dockerfile
+      sync:
+        manual:
+          - src: 'backend/deepiri-incentive-engine/**/*.ts'
+            dest: /app/src/
+          - src: 'backend/deepiri-incentive-engine/**/*.json'
+            dest: /app/
+    
+    # Microservices - Decision Intelligence
+    - image: deepiri-decision-intelligence
+      context: ./platform-services
+      docker:
+        dockerfile: backend/deepiri-decision-intelligence/Dockerfile
+      sync:
+        manual:
+          - src: 'backend/deepiri-decision-intelligence/**/*.ts'
+            dest: /app/src/
+          - src: 'backend/deepiri-decision-intelligence/**/*.json'
             dest: /app/
     
     # Microservices - Challenge Service
-    - image: deepiri-challenge-service
+    - image: deepiri-adaptive-experience-engine
       context: ./platform-services
       docker:
-        dockerfile: backend/deepiri-challenge-service/Dockerfile
+        dockerfile: backend/deepiri-adaptive-experience-engine/Dockerfile
         # cacheFrom removed - using local builds with Minikube
       sync:
         manual:
-          - src: 'backend/deepiri-challenge-service/**/*.ts'
+          - src: 'backend/deepiri-adaptive-experience-engine/**/*.ts'
             dest: /app/src/
-          - src: 'backend/deepiri-challenge-service/**/*.json'
+          - src: 'backend/deepiri-adaptive-experience-engine/**/*.json'
             dest: /app/
     
     # Microservices - Engagement Service (Gamification)
@@ -190,17 +225,16 @@ build:
           - src: 'backend/deepiri-external-bridge-service/**/*.json'
             dest: /app/
     
-    # Microservices - Notification Service
-    - image: deepiri-notification-service
+# Microservices - Communications Hub
+    - image: deepiri-communications-hub
       context: ./platform-services
       docker:
-        dockerfile: backend/deepiri-notification-service/Dockerfile
-        # cacheFrom removed - using local builds with Minikube
+        dockerfile: backend/deepiri-communications-hub/Dockerfile
       sync:
         manual:
-          - src: 'backend/deepiri-notification-service/**/*.ts'
+          - src: 'backend/deepiri-communications-hub/**/*.ts'
             dest: /app/src/
-          - src: 'backend/deepiri-notification-service/**/*.json'
+          - src: 'backend/deepiri-communications-hub/**/*.json'
             dest: /app/
     
     # Microservices - Realtime Gateway (WebSocket)

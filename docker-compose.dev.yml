@@ -403,14 +403,14 @@ services:
     networks:
       - deepiri-dev-network
 
-  # Task Orchestrator Service
-  task-orchestrator:
+  # Workflow Orchestrator Service
+  workflow-orchestrator:
     build:
       context: ./platform-services
-      dockerfile: backend/deepiri-task-orchestrator/Dockerfile
-    image: deepiri-dev-task-orchestrator:latest
+      dockerfile: backend/deepiri-workflow-orchestrator/Dockerfile
+    image: deepiri-dev-workflow-orchestrator:latest
     pull_policy: never
-    container_name: deepiri-task-orchestrator-dev
+    container_name: deepiri-workflow-orchestrator-dev
     restart: unless-stopped
     logging: *minimal-logging
     ports:
@@ -422,12 +422,12 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_CORE_USER:-deepiri}:${POSTGRES_CORE_PASSWORD:-deepiripassword}@postgres-core:5433/${POSTGRES_CORE_DB:-deepiri}
       PRISMA_CLI_BINARY_TARGETS: "debian-openssl-3.0.x"
       SYNAPSE_URL: http://synapse:8002
-      K8S_SERVICE_NAME: task-orchestrator  # Filter to only load this service's configmap
+      K8S_SERVICE_NAME: workflow-orchestrator  # Filter to only load this service's configmap
     volumes:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
       - ./ops/k8s/secrets:/k8s-secrets:ro
-      - ./platform-services/backend/deepiri-task-orchestrator/src:/app/src
-      - ./platform-services/backend/deepiri-task-orchestrator/tsconfig.json:/app/tsconfig.json
+      - ./platform-services/backend/deepiri-workflow-orchestrator/src:/app/src
+      - ./platform-services/backend/deepiri-workflow-orchestrator/tsconfig.json:/app/tsconfig.json
     command: node dist/server.js
     depends_on:
       - postgres-core
@@ -435,14 +435,14 @@ services:
     networks:
       - deepiri-dev-network
 
-  # Engagement Service
-  engagement-service:
+  # Incentive Engine Service
+  incentive-engine:
     build:
       context: ./platform-services
-      dockerfile: backend/deepiri-engagement-service/Dockerfile
-    image: deepiri-dev-engagement-service:latest
+      dockerfile: backend/deepiri-incentive-engine/Dockerfile
+    image: deepiri-dev-incentive-engine:latest
     pull_policy: never
-    container_name: deepiri-engagement-service-dev
+    container_name: deepiri-incentive-engine-dev
     restart: unless-stopped
     logging: *minimal-logging
     ports:
@@ -453,12 +453,12 @@ services:
       PORT: 5003
       DATABASE_URL: postgresql://${POSTGRES_CORE_USER:-deepiri}:${POSTGRES_CORE_PASSWORD:-deepiripassword}@postgres-core:5433/${POSTGRES_CORE_DB:-deepiri}
       SYNAPSE_URL: http://synapse:8002
-      K8S_SERVICE_NAME: engagement-service  # Filter to only load this service's configmap
+      K8S_SERVICE_NAME: incentive-engine  # Filter to only load this service's configmap
     volumes:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
       - ./ops/k8s/secrets:/k8s-secrets:ro
-      - ./platform-services/backend/deepiri-engagement-service/src:/app/src
-      - ./platform-services/backend/deepiri-engagement-service/tsconfig.json:/app/tsconfig.json
+      - ./platform-services/backend/deepiri-incentive-engine/src:/app/src
+      - ./platform-services/backend/deepiri-incentive-engine/tsconfig.json:/app/tsconfig.json
     command: node dist/server.js
     depends_on:
       - postgres-core
@@ -467,14 +467,14 @@ services:
     networks:
       - deepiri-dev-network
 
-  # Platform Analytics Service
-  platform-analytics-service:
+  # Decision Intelligence Service
+  decision-intelligence:
     build:
       context: ./platform-services
-      dockerfile: backend/deepiri-platform-analytics-service/Dockerfile
-    image: deepiri-dev-platform-analytics-service:latest
+      dockerfile: backend/deepiri-decision-intelligence/Dockerfile
+    image: deepiri-dev-decision-intelligence:latest
     pull_policy: never
-    container_name: deepiri-platform-analytics-service-dev
+    container_name: deepiri-decision-intelligence-dev
     restart: unless-stopped
     logging: *minimal-logging
     ports:
@@ -485,12 +485,12 @@ services:
       PORT: 5004
       DATABASE_URL: postgresql://${POSTGRES_CORE_USER:-deepiri}:${POSTGRES_CORE_PASSWORD:-deepiripassword}@postgres-core:5433/${POSTGRES_CORE_DB:-deepiri}
       SYNAPSE_URL: http://synapse:8002
-      K8S_SERVICE_NAME: platform-analytics-service  # Filter to only load this service's configmap
+      K8S_SERVICE_NAME: decision-intelligence  # Filter to only load this service's configmap
     volumes:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
       - ./ops/k8s/secrets:/k8s-secrets:ro
-      - ./platform-services/backend/deepiri-platform-analytics-service/src:/app/src
-      - ./platform-services/backend/deepiri-platform-analytics-service/tsconfig.json:/app/tsconfig.json
+      - ./platform-services/backend/deepiri-decision-intelligence/src:/app/src
+      - ./platform-services/backend/deepiri-decision-intelligence/tsconfig.json:/app/tsconfig.json
     command: node dist/server.js
     depends_on:
       - postgres-core
@@ -499,14 +499,14 @@ services:
     networks:
       - deepiri-dev-network
 
-  # Notification Service
-  notification-service:
+  # Communications Hub Service
+  communications-hub:
     build:
       context: ./platform-services
-      dockerfile: backend/deepiri-notification-service/Dockerfile
-    image: deepiri-dev-notification-service:latest
+      dockerfile: backend/deepiri-communications-hub/Dockerfile
+    image: deepiri-dev-communications-hub:latest
     pull_policy: never
-    container_name: deepiri-notification-service-dev
+    container_name: deepiri-communications-hub-dev
     restart: unless-stopped
     logging: *minimal-logging
     ports:
@@ -517,12 +517,12 @@ services:
       PORT: 5005
       DATABASE_URL: postgresql://${POSTGRES_CORE_USER:-deepiri}:${POSTGRES_CORE_PASSWORD:-deepiripassword}@postgres-core:5433/${POSTGRES_CORE_DB:-deepiri}
       SYNAPSE_URL: http://synapse:8002
-      K8S_SERVICE_NAME: notification-service  # Filter to only load this service's configmap
+      K8S_SERVICE_NAME: communications-hub  # Filter to only load this service's configmap
     volumes:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
       - ./ops/k8s/secrets:/k8s-secrets:ro
-      - ./platform-services/backend/deepiri-notification-service/src:/app/src
-      - ./platform-services/backend/deepiri-notification-service/tsconfig.json:/app/tsconfig.json
+      - ./platform-services/backend/deepiri-communications-hub/src:/app/src
+      - ./platform-services/backend/deepiri-communications-hub/tsconfig.json:/app/tsconfig.json
     command: node dist/server.js
     depends_on:
       - postgres-core
@@ -576,14 +576,14 @@ services:
     networks:
       - deepiri-dev-network
 
-  # Challenge Service
-  challenge-service:
+  # Adaptive Experience Engine Service
+  adaptive-experience-engine:
     build:
       context: ./platform-services
-      dockerfile: backend/deepiri-challenge-service/Dockerfile
-    image: deepiri-dev-challenge-service:latest
+      dockerfile: backend/deepiri-adaptive-experience-engine/Dockerfile
+    image: deepiri-dev-adaptive-experience-engine:latest
     pull_policy: never
-    container_name: deepiri-challenge-service-dev
+    container_name: deepiri-adaptive-experience-engine-dev
     restart: unless-stopped
     logging: *minimal-logging
     ports:
@@ -594,12 +594,12 @@ services:
       PORT: 5007
       DATABASE_URL: postgresql://${POSTGRES_CORE_USER:-deepiri}:${POSTGRES_CORE_PASSWORD:-deepiripassword}@postgres-core:5433/${POSTGRES_CORE_DB:-deepiri}
       SYNAPSE_URL: http://synapse:8002
-      K8S_SERVICE_NAME: challenge-service  # Filter to only load this service's configmap
+      K8S_SERVICE_NAME: adaptive-experience-engine  # Filter to only load this service's configmap
     volumes:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
       - ./ops/k8s/secrets:/k8s-secrets:ro
-      - ./platform-services/backend/deepiri-challenge-service/src:/app/src
-      - ./platform-services/backend/deepiri-challenge-service/tsconfig.json:/app/tsconfig.json
+      - ./platform-services/backend/deepiri-adaptive-experience-engine/src:/app/src
+      - ./platform-services/backend/deepiri-adaptive-experience-engine/tsconfig.json:/app/tsconfig.json
     command: node dist/server.js
     depends_on:
       - postgres-core
