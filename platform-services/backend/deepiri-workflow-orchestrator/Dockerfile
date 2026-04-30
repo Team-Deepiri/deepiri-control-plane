@@ -8,14 +8,19 @@ RUN mkdir -p /lib64 \
 COPY shared/deepiri-shared-utils/package*.json /shared/deepiri-shared-utils/
 COPY shared/deepiri-shared-utils/tsconfig.json /shared/deepiri-shared-utils/
 COPY shared/deepiri-shared-utils/src /shared/deepiri-shared-utils/src
-# Package files
 COPY backend/deepiri-workflow-orchestrator/package*.json ./
 COPY backend/deepiri-workflow-orchestrator/tsconfig.json ./
-...
-COPY backend/deepiri-workflow-orchestrator/src ./src
 COPY backend/deepiri-workflow-orchestrator/prisma ./prisma
 
-# Prisma generate + TypeScript build
+RUN cd /shared/deepiri-shared-utils \
+ && npm install --legacy-peer-deps \
+ && npm run build \
+ && cd /app \
+ && npm install --legacy-peer-deps \
+ && npm cache clean --force
+
+COPY backend/deepiri-workflow-orchestrator/src ./src
+
 RUN npx prisma generate \
  && npm run build \
  && cd node_modules/.prisma/client \
