@@ -14,11 +14,11 @@ echo "🚀 Starting Infrastructure Team Environment..."
 # Infrastructure team services (currently same as backend team)
 # Future: Will include cloud infrastructure and data infrastructure services
 ALL_SERVICES=(
-  postgres redis influxdb
-  api-gateway auth-service task-orchestrator
-  engagement-service platform-analytics-service
-  notification-service external-bridge-service
-  challenge-service realtime-gateway
+  postgres-auth postgres-core postgres-intelligence redis influxdb
+  api-gateway auth-service workflow-orchestrator
+  incentive-engine decision-intelligence
+  communications-hub external-bridge-service
+  adaptive-experience-engine realtime-gateway
   language-intelligence-service messaging-service
   frontend-dev synapse adminer
   # deepiri-prismpipe  # PrismPipe - Capability-Routed API Pipeline (Coming Soon)
