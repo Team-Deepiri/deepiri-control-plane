@@ -35,7 +35,7 @@ fi
 
 # Start infrastructure services first (without --no-deps to ensure proper startup order)
 echo "📦 Starting infrastructure services..."
-docker compose -f docker-compose.dev.yml up -d --no-build postgres-auth postgres-core postgres-intelligence redis influxdb synapse
+docker compose -f docker-compose.dev.yml up -d --no-build postgres-auth postgres-core postgres-intelligence redis influxdb kafka synapse
 
 # Wait a moment for infrastructure to be ready
 echo "⏳ Waiting for infrastructure to be ready..."

@@ -145,6 +145,27 @@ the base image is used as-is, which is the intended and supported configuration.
 
 ---
 
+## Fix 5 — Duplicate logger declaration in api-gateway
+
+**File:** `backend/deepiri-api-gateway/src/server.ts:63`
+
+**Root cause:** `server.ts` declared `logger` twice — once at line 58 using `createLogger` from `@team-deepiri/shared-utils` (correct), and again at line 63 using `winston.createLogger` directly. TypeScript raised `TS2451: Cannot redeclare block-scoped variable 'logger'`, failing the build.
+
+```typescript
+// Before (broken) — two declarations of logger
+const logger = createLogger('api-gateway');          // line 58
+const logger = winston.createLogger({ ... });        // line 63 — duplicate
+
+// After (fixed) — only the shared-utils logger remains
+const logger = createLogger('api-gateway');
+```
+
+The redundant `winston` import was also removed as it was only used by the duplicate block.
+
+**Why it was introduced:** The `winston.createLogger` block was likely added during development before the shared-utils logger was adopted, and was never removed when the codebase migrated to the centralised logger.
+
+---
+
 ## Fix 4 — TypeScript syntax error in incentive-engine
 
 **File:** `backend/deepiri-incentive-engine/src/core/incentiveEngineCore.ts:82`
@@ -196,3 +217,4 @@ build runs.
 | `backend/deepiri-incentive-engine/Dockerfile` | Fixes 1, 2, 3 |
 | `backend/deepiri-language-intelligence-service/Dockerfile` | Fixes 1, 2, 3 |
 | `backend/deepiri-incentive-engine/src/core/incentiveEngineCore.ts` | Fix 4 |
+| `backend/deepiri-api-gateway/src/server.ts` | Fix 5 |
