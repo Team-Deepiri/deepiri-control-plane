@@ -13,6 +13,7 @@ Usage:
     python dev-to-main-pr.py --backwards         # reverse: main → dev
 """
 import json
+import re
 import subprocess
 import sys
 from typing import Any, Optional
@@ -119,7 +120,11 @@ def create_pr(repo_name: str, title: str, body: str, draft: bool = False) -> tup
 
 def enable_auto_merge(repo_name: str, pr_url: str) -> tuple[bool, str]:
     repo = repo_slug(repo_name)
-    pr_number = pr_url.split("/")[-1]
+    match = re.search(r"(?:/pull/|#)(\d+)$", pr_url)
+    if not match:
+        return False, f"Unable to parse PR number from '{pr_url}'"
+
+    pr_number = match.group(1)
 
     result = subprocess.run(
         ["gh", "api", f"repos/{repo}/pulls/{pr_number}/auto_merge",
