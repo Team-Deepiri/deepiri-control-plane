@@ -10,7 +10,7 @@ COPY backend/deepiri-messaging-service/tsconfig.json ./
 
 # Install dependencies, including shared-utils from GitHub Packages
 RUN cd /shared/deepiri-shared-utils \
- && npm install --legacy-peer-deps \
+ && npm ci --legacy-peer-deps \
  && npm run build \
  && cd /app \
  && npm install --legacy-peer-deps \

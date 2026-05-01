@@ -13,7 +13,7 @@ RUN node -e "const fs=require('fs'),lock=JSON.parse(fs.readFileSync('package-loc
  && node -e "const fs=require('fs'),p=JSON.parse(fs.readFileSync('package.json'));delete p.scripts.prepare;fs.writeFileSync('package.json',JSON.stringify(p,null,2));" \
  && rm -rf node_modules \
  && cd /app \
- && npm install --legacy-peer-deps \
+ && npm ci --legacy-peer-deps \
  && cd /shared/deepiri-shared-utils \
  && npm ci --omit=dev --legacy-peer-deps \
  && cd /app \

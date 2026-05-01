@@ -7,7 +7,7 @@ COPY shared/deepiri-shared-utils/src /shared/deepiri-shared-utils/src
 COPY backend/deepiri-adaptive-experience-engine/package*.json ./
 
 RUN cd /shared/deepiri-shared-utils \
- && npm install --legacy-peer-deps \
+ && npm ci --legacy-peer-deps \
  && npm run build \
  && cd /app \
  && npm install --legacy-peer-deps \

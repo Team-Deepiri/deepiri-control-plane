@@ -13,7 +13,7 @@ COPY backend/deepiri-workflow-orchestrator/tsconfig.json ./
 COPY backend/deepiri-workflow-orchestrator/prisma ./prisma
 
 RUN cd /shared/deepiri-shared-utils \
- && npm install --legacy-peer-deps \
+ && npm ci --legacy-peer-deps \
  && npm run build \
  && cd /app \
  && npm install --legacy-peer-deps \
