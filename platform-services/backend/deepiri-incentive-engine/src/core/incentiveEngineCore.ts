@@ -79,7 +79,7 @@ export class IncentiveEngineCore {
     action: string,
     idempotencyKey: string,
     metadata?: Record<string, any>
-  : Promise<IncentiveLedgerEntry> {
+  ): Promise<IncentiveLedgerEntry> {
     const policy = await this.getTenantPolicy(tenantId);
     
     const rateCheck = await this.checkRateLimits(tenantId, userId, action);
