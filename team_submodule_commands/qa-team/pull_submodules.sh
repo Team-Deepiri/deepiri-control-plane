@@ -22,30 +22,15 @@ declare -a SUBMODULES=(
   "platform-services/backend/deepiri-language-intelligence-service"
   "deepiri-core-api"
   "deepiri-web-frontend"
+  "platform-services/shared/deepiri-prismpipe"
+  "platform-services/shared/deepiri-shared-utils"
 )
 
 # Initialize and update only those submodules
 for sm_path in "${SUBMODULES[@]}"; do
   echo "🔄 Initializing and updating submodule: $sm_path"
   git submodule update --init "$sm_path"
-
-  # Switch to main or master branch if needed
-  (
-    cd "$sm_path"
-    git fetch origin || true
-    branch="main"
-    if ! git show-ref --verify --quiet refs/remotes/origin/main && git show-ref --verify --quiet refs/remotes/origin/master; then
-      branch="master"
-    fi
-
-    current_branch=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
-    if [ "$current_branch" != "$branch" ]; then
-      echo "   Switching branch from '$current_branch' to '$branch'"
-      git checkout "$branch" 2>/dev/null || git checkout -b "$branch" "origin/$branch"
-    fi
-
-    git pull origin "$branch" || true
-  )
+  echo "   📌 Left at platform-pinned commit"
 done
 
 echo ""

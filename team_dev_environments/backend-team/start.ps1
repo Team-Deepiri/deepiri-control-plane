@@ -13,11 +13,11 @@ Write-Host ""
 # Backend team services
 $SERVICES = @(
   "postgres", "redis", "influxdb",
-  "api-gateway", "auth-service", "task-orchestrator",
-  "engagement-service", "platform-analytics-service",
-  "notification-service", "external-bridge-service",
-  "challenge-service", "realtime-gateway",
-  "language-intelligence-service"
+  "api-gateway", "auth-service", "workflow-orchestrator",
+  "incentive-engine", "decision-intelligence",
+  "communications-hub", "external-bridge-service",
+  "adaptive-experience-engine", "realtime-gateway",
+  "language-intelligence-service", "messaging-service"
 )
 
 Write-Host "   (Using docker-compose.dev.yml with service selection)" -ForegroundColor Gray

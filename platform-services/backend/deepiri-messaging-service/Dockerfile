@@ -1,31 +1,20 @@
-# Build shared-utils first
-FROM node:20-alpine AS shared-utils-builder
-WORKDIR /shared-utils
-COPY shared/deepiri-shared-utils/package*.json ./
-COPY shared/deepiri-shared-utils/tsconfig.json ./
-COPY shared/deepiri-shared-utils/src ./src
-
-RUN npm install --legacy-peer-deps && \
-    npm run build && \
-    npm cache clean --force
-
 # Build main service
-FROM node:20-alpine
-WORKDIR /app
+FROM ghcr.io/team-deepiri/deepiri-base:20-alpine
 
-# Install curl for health checks and OpenSSL for Prisma
-RUN apk add --no-cache curl openssl
-
+COPY shared/deepiri-shared-utils/package*.json /shared/deepiri-shared-utils/
+COPY shared/deepiri-shared-utils/tsconfig.json /shared/deepiri-shared-utils/
+COPY shared/deepiri-shared-utils/src /shared/deepiri-shared-utils/src
 # Copy package files
 COPY backend/deepiri-messaging-service/package*.json ./
 COPY backend/deepiri-messaging-service/tsconfig.json ./
 
-# Copy built shared-utils
-COPY --from=shared-utils-builder /shared-utils /shared-utils
-
-# Install dependencies (including shared-utils as file dependency)
-RUN npm install --legacy-peer-deps file:/shared-utils && \
-    npm cache clean --force
+# Install dependencies, including shared-utils from GitHub Packages
+RUN cd /shared/deepiri-shared-utils \
+ && npm install --legacy-peer-deps \
+ && npm run build \
+ && cd /app \
+ && npm install --legacy-peer-deps \
+ && npm cache clean --force
 
 # Copy source code
 COPY backend/deepiri-messaging-service/src ./src
@@ -46,4 +35,3 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # Start server
 CMD ["npm", "start"]
-

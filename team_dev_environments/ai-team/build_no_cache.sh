@@ -1,0 +1,36 @@
+#!/bin/bash
+# AI Team - Build script (No Cache)
+# Builds AI/ML services using docker-compose.dev.yml with service selection (no cache)
+
+set -e
+
+cd "$(dirname "$0")/../.." || exit 1
+
+# Force legacy builder for consistency with the normal team build flow.
+export DOCKER_BUILDKIT=0
+export COMPOSE_DOCKER_CLI_BUILD=0
+
+# AI team services
+SERVICES=(
+  postgres-auth postgres-core postgres-intelligence redis influxdb etcd minio milvus
+  cyrex cyrex-interface mlflow
+  # jupyter  # DISABLED: No services depend on Jupyter - it's only for manual research/experimentation
+  adaptive-experience-engine api-gateway messaging-service realtime-gateway
+  ollama synapse
+  # deepiri-prismpipe  # PrismPipe - Capability-Routed API Pipeline (Coming Soon)
+)
+
+echo "🔨 Building AI Team services (No Cache)..."
+echo "   (Using docker-compose.dev.yml with service selection)"
+echo "   Services: ${SERVICES[*]}"
+echo ""
+
+# Pull Ollama image (it's a pre-built image, not built from source)
+echo "📥 Pulling Ollama Docker image..."
+docker pull ollama/ollama:latest || echo "⚠️  Failed to pull Ollama image, will try again during start"
+echo ""
+
+# Build services using docker-compose.dev.yml with --no-cache
+docker compose -f docker-compose.dev.yml build --no-cache "${SERVICES[@]}"
+
+echo "✅ AI Team services built successfully!"

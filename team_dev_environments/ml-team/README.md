@@ -14,7 +14,7 @@ cd ../..
 ./setup-hooks.sh
 ```
 
-This protects the `main` and `dev` branches from accidental pushes. See [BRANCH_PROTECTION.md](../../BRANCH_PROTECTION.md) for details.
+This protects `main`, `master`, and branches containing `team-dev` from accidental pushes. See [BRANCH_PROTECTION.md](../../BRANCH_PROTECTION.md) for details.
 
 ## Services
 
@@ -40,7 +40,7 @@ This protects the `main` and `dev` branches from accidental pushes. See [BRANCH_
 This builds:
 - `cyrex`
 - `jupyter`
-- `platform-analytics-service`
+- `decision-intelligence`
 
 ### Start Services
 
@@ -56,7 +56,7 @@ This starts all required infrastructure and services.
 cd ../..
 docker compose -f docker-compose.dev.yml stop \
   postgres influxdb redis \
-  cyrex jupyter mlflow platform-analytics-service
+  cyrex jupyter mlflow decision-intelligence
 ```
 
 ### Rebuild After Code Changes
@@ -126,7 +126,7 @@ docker compose -f docker-compose.dev.yml logs -f
 ```bash
 docker compose -f docker-compose.dev.yml logs -f cyrex
 docker compose -f docker-compose.dev.yml logs -f jupyter
-docker compose -f docker-compose.dev.yml logs -f platform-analytics-service
+docker compose -f docker-compose.dev.yml logs -f decision-intelligence
 # ... etc for all services
 ```
 
@@ -134,7 +134,7 @@ docker compose -f docker-compose.dev.yml logs -f platform-analytics-service
 
 - `diri-cyrex/app/services/` - ML model implementations
 - `diri-cyrex/train/` - Training pipelines
-- `platform-services/backend/deepiri-platform-analytics-service/` - Analytics features
+- `platform-services/backend/deepiri-decision-intelligence/` - Analytics features
 
 ## Service URLs
 
