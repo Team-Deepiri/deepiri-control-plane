@@ -1,11 +1,12 @@
 # Deepiri Docker Compose Makefile
 # Makes rebuilding clean and easy
 
-.PHONY: rebuild clean build up down logs health heal rtg-up rtg-down rtg-logs rtg-health rtg-heal rtg-watchdog rtg-preflight rtg-smoke rtg-grpc-smoke rtg-failure rtg-gate rtg-gate-full rtg-sugar-up rtg-sugar-down rtg-sugar-logs rtg-sugar-health rtg-sugar-heal rtg-sugar-watchdog rtg-sugar-preflight rtg-sugar-smoke rtg-sugar-grpc-smoke rtg-sugar-failure rtg-sugar-gate rtg-sugar-gate-full
+.PHONY: rebuild clean build up down logs health heal rtg-up rtg-down rtg-up-v3-freeze rtg-rollout-v3-freeze rtg-logs rtg-health rtg-heal rtg-watchdog rtg-preflight rtg-smoke rtg-grpc-smoke rtg-failure rtg-gate rtg-gate-full rtg-sugar-up rtg-sugar-down rtg-sugar-logs rtg-sugar-health rtg-sugar-heal rtg-sugar-watchdog rtg-sugar-preflight rtg-sugar-smoke rtg-sugar-grpc-smoke rtg-sugar-failure rtg-sugar-gate rtg-sugar-gate-full
 
 RTG_SUGAR_COMPOSE_FILE := docker-compose.rtg-sugar-glider.local.yml
 RTG_LEGACY_COMPOSE_FILE := docker-compose.rtg-sidecar.local.yml
 RTG_COMPOSE_FILE ?= $(if $(wildcard $(RTG_SUGAR_COMPOSE_FILE)),$(RTG_SUGAR_COMPOSE_FILE),$(RTG_LEGACY_COMPOSE_FILE))
+RTG_V3_FREEZE_ENV := STREAM_TRANSPORT=sugar-glider-grpc STREAM_SHADOW_MODE=false SIDECAR_PUBLISH_PIPELINE_ENABLED=false SIDECAR_PUBLISH_PIPELINE_ADAPTIVE_ENABLED=false SIDECAR_PUBLISH_PIPELINE_MIN_BATCH=2 SIDECAR_PUBLISH_PIPELINE_MAX_BATCH=64 SIDECAR_PUBLISH_PIPELINE_FLUSH_MS=0 SIDECAR_PUBLISH_PIPELINE_QUEUE_SIZE=8192 SIDECAR_PUBLISH_PIPELINE_MAX_BYTES=1048576
 SUGAR_GLIDER_URL ?= http://localhost:8081
 SUGAR_GLIDER_GRPC_ADDR ?= localhost:50051
 # Legacy env var compatibility
@@ -146,6 +147,16 @@ rtg-up:
 		docker compose -f $(RTG_COMPOSE_FILE) up -d; \
 	fi
 
+rtg-up-v3-freeze:
+	@$(RTG_V3_FREEZE_ENV) $(MAKE) rtg-up
+
+rtg-rollout-v3-freeze:
+	@if grep -qEi "(Microsoft|WSL)" /proc/version 2>/dev/null || [ -n "$$WSL_DISTRO_NAME" ]; then \
+		$(RTG_V3_FREEZE_ENV) docker-compose.exe -f $(RTG_COMPOSE_FILE) up -d --force-recreate realtime-gateway synapse-sugar-glider; \
+	else \
+		$(RTG_V3_FREEZE_ENV) docker compose -f $(RTG_COMPOSE_FILE) up -d --force-recreate realtime-gateway synapse-sugar-glider; \
+	fi
+
 rtg-down:
 	@if grep -qEi "(Microsoft|WSL)" /proc/version 2>/dev/null || [ -n "$$WSL_DISTRO_NAME" ]; then \
 		docker-compose.exe -f $(RTG_COMPOSE_FILE) down; \
@@ -224,11 +235,15 @@ rtg-failure:
 rtg-gate:
 	@set -e; \
 	echo "🚀 Running RTG Sugar Glider gate (fast)..."; \
+	SMOKE_GROUP="sugar-glider-smoke-tail-$$(date +%s)"; \
+	GRPC_GROUP="sugar-glider-grpc-smoke-tail-$$(date +%s)"; \
 	$(MAKE) rtg-up; \
 	$(MAKE) rtg-preflight; \
 	$(MAKE) rtg-health; \
-	$(MAKE) rtg-smoke; \
-	$(MAKE) rtg-grpc-smoke; \
+	docker compose -f $(RTG_COMPOSE_FILE) exec -T redis redis-cli -a redispassword XGROUP CREATE platform-events "$$SMOKE_GROUP" '$$' MKSTREAM >/dev/null || true; \
+	docker compose -f $(RTG_COMPOSE_FILE) exec -T redis redis-cli -a redispassword XGROUP CREATE platform-events "$$GRPC_GROUP" '$$' MKSTREAM >/dev/null || true; \
+	$(MAKE) rtg-smoke SMOKE_ARGS="--group $$SMOKE_GROUP"; \
+	$(MAKE) rtg-grpc-smoke GRPC_SMOKE_ARGS="--group $$GRPC_GROUP"; \
 	echo "✅ RTG Sugar Glider gate passed."
 
 rtg-gate-full:
