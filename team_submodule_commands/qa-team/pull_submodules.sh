@@ -24,6 +24,8 @@ declare -a SUBMODULES=(
   "deepiri-web-frontend"
   "platform-services/shared/deepiri-prismpipe"
   "platform-services/shared/deepiri-shared-utils"
+  "platform-services/shared/deepiri-synapse"
+  "platform-services/shared/deepiri-sugar-glider"
 )
 
 # Initialize and update only those submodules
