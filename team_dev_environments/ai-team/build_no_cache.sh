@@ -6,17 +6,17 @@ set -e
 
 cd "$(dirname "$0")/../.." || exit 1
 
-# Force legacy builder for consistency with the normal team build flow.
-export DOCKER_BUILDKIT=0
-export COMPOSE_DOCKER_CLI_BUILD=0
+# Enable BuildKit for better builds
+export DOCKER_BUILDKIT=1
+export COMPOSE_DOCKER_CLI_BUILD=1
 
 # AI team services
 SERVICES=(
-  postgres-auth postgres-core postgres-intelligence redis influxdb etcd minio milvus
+  postgres redis influxdb etcd minio milvus
   cyrex cyrex-interface mlflow
   # jupyter  # DISABLED: No services depend on Jupyter - it's only for manual research/experimentation
-  adaptive-experience-engine api-gateway messaging-service realtime-gateway
-  ollama synapse
+  challenge-service api-gateway messaging-service realtime-gateway
+  ollama synapse synapse-sugar-glider
   # deepiri-prismpipe  # PrismPipe - Capability-Routed API Pipeline (Coming Soon)
 )
 
@@ -34,3 +34,4 @@ echo ""
 docker compose -f docker-compose.dev.yml build --no-cache "${SERVICES[@]}"
 
 echo "✅ AI Team services built successfully!"
+

@@ -162,6 +162,7 @@ The platform uses git submodules for service repositories. Use the team-specific
 - `deepiri-language-intelligence-service` - Language processing
 - `platform-services/shared/deepiri-prismpipe` - PrismPipe pipeline
 - `platform-services/shared/deepiri-synapse` - Matrix server
+- `platform-services/shared/deepiri-sugar-glider` - Synapse stream bridge runtime
 
 ## Common Commands
 
@@ -207,7 +208,8 @@ deepiri-platform/
 │   │   └── deepiri-language-intelligence-service/
 │   └── shared/
 │       ├── deepiri-prismpipe/      # Capability-routed API pipeline
-│       ├── deepiri-synapse/       # Matrix server
+│       ├── deepiri-synapse/        # Matrix server
+│       ├── deepiri-sugar-glider/   # Synapse stream bridge runtime
 │       └── deepiri-shared-utils/  # Shared utilities
 ├── diri-cyrex/                     # AI/ML service
 ├── diri-helox/                     # ML training pipelines
