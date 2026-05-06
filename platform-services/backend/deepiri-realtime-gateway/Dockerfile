@@ -25,11 +25,11 @@ RUN chmod +x /usr/local/bin/load-k8s-env.sh /usr/local/bin/docker-entrypoint.sh
 COPY backend/deepiri-realtime-gateway/package.json ./
 COPY backend/deepiri-realtime-gateway/package*.json ./
 
-# Copy built shared-utils
-COPY --from=shared-utils-builder /shared-utils /shared-utils
+# Copy built shared-utils to the path package.json's file: reference resolves to
+# (@deepiri/shared-utils -> file:../../shared/deepiri-shared-utils -> /shared/deepiri-shared-utils from /app)
+COPY --from=shared-utils-builder /shared-utils /shared/deepiri-shared-utils
 
-# SINGLE install step (this is the fix)
-RUN npm install --legacy-peer-deps file:/shared-utils bufferutil utf-8-validate \
+RUN npm install --legacy-peer-deps \
  && npm cache clean --force
 
 # Copy source files
