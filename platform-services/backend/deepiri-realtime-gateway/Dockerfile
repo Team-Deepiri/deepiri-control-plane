@@ -6,7 +6,7 @@ COPY shared/deepiri-shared-utils/package*.json ./
 COPY shared/deepiri-shared-utils/tsconfig.json ./
 COPY shared/deepiri-shared-utils/src ./src
 
-RUN npm install --legacy-peer-deps \
+RUN npm ci --legacy-peer-deps \
  && npm run build
 
 # Build the service
@@ -28,16 +28,11 @@ COPY backend/deepiri-realtime-gateway/package*.json ./
 # Copy built shared-utils
 COPY --from=shared-utils-builder /shared-utils /shared-utils
 
-# SINGLE install step (this is the fix)
-<<<<<<< HEAD
-RUN cd /shared/deepiri-shared-utils \
- && npm ci --legacy-peer-deps \
- && npm run build \
- && cd /app \
+RUN cd /app \
  && npm install --legacy-peer-deps \
-=======
-RUN npm install --legacy-peer-deps file:/shared-utils bufferutil utf-8-validate \
->>>>>>> d1bbad3d1c4244526aeadc322b3c1f073c99c9f9
+ && npm install --legacy-peer-deps file:/shared-utils bufferutil utf-8-validate \
+ && mkdir -p node_modules/@deepiri \
+ && ln -sf ../@team-deepiri/shared-utils node_modules/@deepiri/shared-utils \
  && npm cache clean --force
 
 # Copy source files

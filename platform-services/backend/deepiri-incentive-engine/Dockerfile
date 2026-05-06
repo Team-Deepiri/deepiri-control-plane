@@ -1,4 +1,4 @@
-FROM ghcr.io/team-deepiri/deepiri-base:18-alpine
+FROM ghcr.io/team-deepiri/deepiri-suite:18-alpine
 
 COPY shared/deepiri-shared-utils/package*.json /shared/deepiri-shared-utils/
 COPY shared/deepiri-shared-utils/tsconfig.json /shared/deepiri-shared-utils/
@@ -13,7 +13,7 @@ RUN node -e "const fs=require('fs'),lock=JSON.parse(fs.readFileSync('package-loc
  && node -e "const fs=require('fs'),p=JSON.parse(fs.readFileSync('package.json'));delete p.scripts.prepare;fs.writeFileSync('package.json',JSON.stringify(p,null,2));" \
  && rm -rf node_modules \
  && cd /app \
- && npm ci --legacy-peer-deps \
+ && npm install --legacy-peer-deps \
  && cd /shared/deepiri-shared-utils \
  && npm ci --omit=dev --legacy-peer-deps \
  && cd /app \
