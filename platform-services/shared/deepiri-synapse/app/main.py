@@ -114,8 +114,9 @@ async def health():
     try:
         await redis_client.ping()
         return {"status": "healthy", "service": "synapse"}
-    except Exception as e:
-        return {"status": "unhealthy", "error": str(e)}
+    except Exception:
+        logger.exception("Health check failed")
+        return {"status": "unhealthy", "error": "Internal health check failure"}
 
 
 @app.get("/streams")
