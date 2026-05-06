@@ -352,6 +352,7 @@ services:
       K8S_SERVICE_NAME: api-gateway  # Filter to only load this service's configmap
     volumes:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
+      - ./ops/k8s/load-k8s-env.sh:/usr/local/bin/load-k8s-env.sh:ro
       - ./ops/k8s/secrets:/k8s-secrets:ro
       - ./platform-services/backend/deepiri-api-gateway/src:/app/src
       - ./platform-services/backend/deepiri-api-gateway/tsconfig.json:/app/tsconfig.json
@@ -406,6 +407,7 @@ services:
       K8S_SERVICE_NAME: auth-service  # Filter to only load this service's configmap
     volumes:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
+      - ./ops/k8s/load-k8s-env.sh:/usr/local/bin/load-k8s-env.sh:ro
       - ./ops/k8s/secrets:/k8s-secrets:ro
     command: sh -c "(if [ -f /usr/local/bin/prisma-baseline.sh ]; then /usr/local/bin/prisma-baseline.sh; else echo '[Prisma Baseline] Script not found, skipping baseline (rebuild image to enable)'; npx prisma migrate deploy || true; fi) && npx prisma generate && npm run dev"
     healthcheck:
@@ -415,9 +417,12 @@ services:
       retries: 3
       start_period: 60s
     depends_on:
-      - postgres-auth
-      - influxdb
-      - synapse
+      postgres-auth:
+        condition: service_healthy
+      influxdb:
+        condition: service_started
+      synapse:
+        condition: service_started
     networks:
       - deepiri-dev-network
 
@@ -447,13 +452,16 @@ services:
       K8S_SERVICE_NAME: workflow-orchestrator  # Filter to only load this service's configmap
     volumes:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
+      - ./ops/k8s/load-k8s-env.sh:/usr/local/bin/load-k8s-env.sh:ro
       - ./ops/k8s/secrets:/k8s-secrets:ro
       - ./platform-services/backend/deepiri-workflow-orchestrator/src:/app/src
       - ./platform-services/backend/deepiri-workflow-orchestrator/tsconfig.json:/app/tsconfig.json
     command: node dist/server.js
     depends_on:
-      - postgres-core
-      - synapse
+      postgres-core:
+        condition: service_healthy
+      synapse:
+        condition: service_started
     networks:
       - deepiri-dev-network
 
@@ -482,14 +490,18 @@ services:
       K8S_SERVICE_NAME: incentive-engine  # Filter to only load this service's configmap
     volumes:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
+      - ./ops/k8s/load-k8s-env.sh:/usr/local/bin/load-k8s-env.sh:ro
       - ./ops/k8s/secrets:/k8s-secrets:ro
       - ./platform-services/backend/deepiri-incentive-engine/src:/app/src
       - ./platform-services/backend/deepiri-incentive-engine/tsconfig.json:/app/tsconfig.json
     command: node dist/server.js
     depends_on:
-      - postgres-core
-      - redis
-      - synapse
+      postgres-core:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      synapse:
+        condition: service_started
     networks:
       - deepiri-dev-network
 
@@ -514,6 +526,7 @@ services:
       K8S_SERVICE_NAME: decision-intelligence  # Filter to only load this service's configmap
     volumes:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
+      - ./ops/k8s/load-k8s-env.sh:/usr/local/bin/load-k8s-env.sh:ro
       - ./ops/k8s/secrets:/k8s-secrets:ro
       - ./platform-services/backend/deepiri-decision-intelligence/src:/app/src
       - ./platform-services/backend/deepiri-decision-intelligence/tsconfig.json:/app/tsconfig.json
@@ -546,13 +559,18 @@ services:
       K8S_SERVICE_NAME: communications-hub  # Filter to only load this service's configmap
     volumes:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
+      - ./ops/k8s/load-k8s-env.sh:/usr/local/bin/load-k8s-env.sh:ro
       - ./ops/k8s/secrets:/k8s-secrets:ro
       - ./platform-services/backend/deepiri-communications-hub/src:/app/src
       - ./platform-services/backend/deepiri-communications-hub/tsconfig.json:/app/tsconfig.json
     command: node dist/server.js
     depends_on:
-      - postgres-core
-      - synapse
+      postgres-core:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      synapse:
+        condition: service_started
     networks:
       - deepiri-dev-network
 
@@ -585,6 +603,7 @@ services:
       K8S_SERVICE_NAME: external-bridge-service  # Filter to only load this service's configmap
     volumes:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
+      - ./ops/k8s/load-k8s-env.sh:/usr/local/bin/load-k8s-env.sh:ro
       - ./ops/k8s/secrets:/k8s-secrets:ro
       - ./platform-services/backend/deepiri-external-bridge-service/src:/app/src
       - ./platform-services/backend/deepiri-external-bridge-service/tsconfig.json:/app/tsconfig.json
@@ -596,9 +615,12 @@ services:
       retries: 3
       start_period: 20s
     depends_on:
-      - postgres-core
-      - synapse
-      - kafka
+      postgres-core:
+        condition: service_healthy
+      synapse:
+        condition: service_started
+      kafka:
+        condition: service_started
     networks:
       - deepiri-dev-network
 
@@ -623,6 +645,7 @@ services:
       K8S_SERVICE_NAME: adaptive-experience-engine  # Filter to only load this service's configmap
     volumes:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
+      - ./ops/k8s/load-k8s-env.sh:/usr/local/bin/load-k8s-env.sh:ro
       - ./ops/k8s/secrets:/k8s-secrets:ro
       - ./platform-services/backend/deepiri-adaptive-experience-engine/src:/app/src
       - ./platform-services/backend/deepiri-adaptive-experience-engine/tsconfig.json:/app/tsconfig.json
@@ -667,6 +690,7 @@ services:
       K8S_SERVICE_NAME: language-intelligence-service
     volumes:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
+      - ./ops/k8s/load-k8s-env.sh:/usr/local/bin/load-k8s-env.sh:ro
       - ./ops/k8s/secrets:/k8s-secrets:ro
       - ./platform-services/shared/deepiri-shared-utils:/shared-utils
       - ./platform-services/backend/deepiri-language-intelligence-service/src:/app/src
@@ -680,12 +704,18 @@ services:
       retries: 3
       start_period: 20s
     depends_on:
-      - postgres-intelligence
-      - redis
-      - minio
-      - cyrex
-      - auth-service
-      - synapse
+      postgres-intelligence:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      minio:
+        condition: service_started
+      cyrex:
+        condition: service_started
+      auth-service:
+        condition: service_started
+      synapse:
+        condition: service_started
     networks:
       - deepiri-dev-network
 
@@ -713,6 +743,7 @@ services:
       K8S_SERVICE_NAME: messaging-service
     volumes:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
+      - ./ops/k8s/load-k8s-env.sh:/usr/local/bin/load-k8s-env.sh:ro
       - ./ops/k8s/secrets:/k8s-secrets:ro
       - ./platform-services/shared/deepiri-shared-utils:/shared-utils
       - ./platform-services/backend/deepiri-messaging-service/src:/app/src
@@ -783,6 +814,7 @@ services:
       K8S_SERVICE_NAME: realtime-gateway  # Filter to only load this service's configmap
     volumes:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
+      - ./ops/k8s/load-k8s-env.sh:/usr/local/bin/load-k8s-env.sh:ro
       - ./ops/k8s/secrets:/k8s-secrets:ro
       - ./platform-services/backend/deepiri-realtime-gateway/src:/app/src
       - ./platform-services/backend/deepiri-realtime-gateway/tsconfig.json:/app/tsconfig.json
@@ -935,6 +967,7 @@ services:
       - "8000:8000"
     volumes:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
+      - ./ops/k8s/load-k8s-env.sh:/usr/local/bin/load-k8s-env.sh:ro
       - ./ops/k8s/secrets:/k8s-secrets:ro
       - ./diri-cyrex/app:/app/app
       - ./diri-cyrex/train:/app/train
@@ -1196,6 +1229,7 @@ services:
       K8S_SERVICE_NAME: synapse  # Filter to only load this service's configmap
     volumes:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
+      - ./ops/k8s/load-k8s-env.sh:/usr/local/bin/load-k8s-env.sh:ro
       - ./ops/k8s/secrets:/k8s-secrets:ro
     healthcheck:
       test:
@@ -1309,6 +1343,7 @@ services:
       K8S_SERVICE_NAME: frontend-dev  # Filter to only load this service's configmap
     volumes:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
+      - ./ops/k8s/load-k8s-env.sh:/usr/local/bin/load-k8s-env.sh:ro
       - ./ops/k8s/secrets:/k8s-secrets:ro
       - ./deepiri-web-frontend:/app
       - /app/node_modules
