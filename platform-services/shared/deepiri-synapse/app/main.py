@@ -149,8 +149,9 @@ async def get_messages(stream_name: str, count: int = 10):
                 for msg_id, data in messages
             ]
         }
-    except Exception as e:
-        return {"error": str(e)}
+    except Exception:
+        logger.exception("Failed to retrieve messages for stream '%s'", stream_name)
+        return {"error": "Failed to retrieve stream messages"}
 
 
 @app.get("/metrics")
