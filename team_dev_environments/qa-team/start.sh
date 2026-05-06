@@ -48,7 +48,7 @@ docker compose -f docker-compose.dev.yml up -d --no-build --no-deps \
   incentive-engine decision-intelligence \
   communications-hub external-bridge-service \
   adaptive-experience-engine realtime-gateway \
-  adminer
+  messaging-service adminer
 
 # Try to start language-intelligence-service if image exists (optional service)
 if docker image inspect deepiri-dev-language-intelligence-service:latest >/dev/null 2>&1; then
