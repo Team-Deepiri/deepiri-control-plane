@@ -752,6 +752,31 @@ services:
       # Override or add docker-specific variables here if needed
       PORT: 5008
       SYNAPSE_URL: http://synapse:8002
+      SYNAPSE_SUGAR_GLIDER_URL: ${SYNAPSE_SUGAR_GLIDER_URL:-http://synapse-sidecar:8081}
+      SYNAPSE_SIDECAR_URL: ${SYNAPSE_SIDECAR_URL:-http://synapse-sidecar:8081}
+      SYNAPSE_GRPC_ADDR: ${SYNAPSE_GRPC_ADDR:-synapse-sidecar:50051}
+      STREAM_TRANSPORT: ${STREAM_TRANSPORT:-sugar-glider-grpc}
+      STREAM_SHADOW_MODE: ${STREAM_SHADOW_MODE:-false}
+      STREAM_CONSUMER_GROUP: ${STREAM_CONSUMER_GROUP:-realtime-gateway}
+      STREAM_CONSUMER_NAME: ${STREAM_CONSUMER_NAME:-realtime-1}
+      STREAM_SUBSCRIBE_BATCH_SIZE: ${STREAM_SUBSCRIBE_BATCH_SIZE:-128}
+      STREAM_EVENT_MAX_IN_FLIGHT: ${STREAM_EVENT_MAX_IN_FLIGHT:-1024}
+      STREAM_EVENT_RESUME_IN_FLIGHT: ${STREAM_EVENT_RESUME_IN_FLIGHT:-768}
+      STREAM_ACK_BATCH_SIZE: ${STREAM_ACK_BATCH_SIZE:-256}
+      STREAM_ACK_FLUSH_MS: ${STREAM_ACK_FLUSH_MS:-6}
+      STREAM_ACK_FLUSH_CONCURRENCY: ${STREAM_ACK_FLUSH_CONCURRENCY:-8}
+      STREAM_ACK_RETRY_MAX_ATTEMPTS: ${STREAM_ACK_RETRY_MAX_ATTEMPTS:-3}
+      STREAM_ACK_RETRY_BASE_MS: ${STREAM_ACK_RETRY_BASE_MS:-25}
+      STREAM_ACK_LOW_TRAFFIC_FLUSH_MS: ${STREAM_ACK_LOW_TRAFFIC_FLUSH_MS:-1}
+      STREAM_ACK_LOW_TRAFFIC_GAP_MS: ${STREAM_ACK_LOW_TRAFFIC_GAP_MS:-16}
+      STREAM_ACK_LOW_TRAFFIC_MAX_PENDING: ${STREAM_ACK_LOW_TRAFFIC_MAX_PENDING:-32}
+      STREAM_LAZY_PAYLOAD_PARSE: ${STREAM_LAZY_PAYLOAD_PARSE:-true}
+      STREAM_EXTRACT_USER_FROM_PAYLOAD: ${STREAM_EXTRACT_USER_FROM_PAYLOAD:-false}
+      STREAM_LANE_RUNTIME_PROFILES_ENABLED: ${STREAM_LANE_RUNTIME_PROFILES_ENABLED:-false}
+      STREAM_DIRECT_BROADCAST_FAST_PATH: ${STREAM_DIRECT_BROADCAST_FAST_PATH:-off}
+      STREAM_DIRECT_BROADCAST_MIN_PAYLOAD_BYTES: ${STREAM_DIRECT_BROADCAST_MIN_PAYLOAD_BYTES:-0}
+      SOCKET_IO_PARSER: ${SOCKET_IO_PARSER:-default}
+      SOCKET_IO_DISCARD_INITIAL_REQUEST: ${SOCKET_IO_DISCARD_INITIAL_REQUEST:-false}
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-redispassword}
@@ -897,6 +922,14 @@ services:
       SENTENCE_TRANSFORMERS_HOME: /app/.cache/sentence_transformers
       # Streaming Service Configuration
       SYNAPSE_URL: http://synapse:8002
+      # Synapse transport (redis|sidecar). Default to sidecar in dev.
+      SYNAPSE_TRANSPORT: ${SYNAPSE_TRANSPORT:-sidecar}
+      SYNAPSE_SIDECAR_URL: ${SYNAPSE_SIDECAR_URL:-http://synapse-sidecar:8081}
+      SYNAPSE_SIDECAR_TIMEOUT_SEC: ${SYNAPSE_SIDECAR_TIMEOUT_SEC:-5}
+      SYNAPSE_SIDECAR_SENDER: ${SYNAPSE_SIDECAR_SENDER:-cyrex}
+      SYNAPSE_CONSUMER_NAME: ${SYNAPSE_CONSUMER_NAME:-cyrex-1}
+      SYNAPSE_MODEL_EVENTS_GROUP: ${SYNAPSE_MODEL_EVENTS_GROUP:-cyrex-runtime}
+      SYNAPSE_SIDECAR_SUBSCRIBER_GROUP_SUFFIX: ${SYNAPSE_SIDECAR_SUBSCRIBER_GROUP_SUFFIX:-subscribers}
       # Override or add docker-specific variables here if needed
     ports:
       - "8000:8000"
@@ -1179,6 +1212,47 @@ services:
     networks:
       - deepiri-dev-network
 
+  # Synapse Sugar Glider - stream transport service
+  synapse-sugar-glider:
+    build:
+      context: ./platform-services/shared/deepiri-sugar-glider
+      dockerfile: Dockerfile
+    image: deepiri-dev-synapse-sugar-glider:latest
+    pull_policy: never
+    container_name: deepiri-synapse-sugar-glider-dev
+    restart: unless-stopped
+    logging: *minimal-logging
+    ports:
+      - "8081:8081"
+      - "50051:50051"
+    environment:
+      SIDECAR_SERVICE_NAME: deepiri-platform
+      SIDECAR_REDIS_URL: redis://:redispassword@redis:6379/0
+      SIDECAR_LISTEN_ADDR: tcp://0.0.0.0:8081
+      SIDECAR_GRPC_ADDR: tcp://0.0.0.0:50051
+      SIDECAR_PUBLISH_STREAMS: platform-events,inference-events,model-events,training-events
+      SIDECAR_CONSUME_STREAMS: platform-events,inference-events,model-events,training-events
+      SIDECAR_MAX_STREAM_LEN: "10000"
+      SIDECAR_WAL_DIR: /data/synapse-wal
+      SIDECAR_WAL_REPLAY_BATCH: "100"
+      SIDECAR_WAL_REPLAY_INTERVAL_MS: "2000"
+      SIDECAR_DLQ_MAX_RETRIES: "3"
+      SIDECAR_DLQ_MIN_IDLE_MS: "30000"
+      SIDECAR_DLQ_SCAN_INTERVAL_MS: "5000"
+    volumes:
+      - synapse_sugar_glider_dev_wal:/data/synapse-wal
+    depends_on:
+      - redis
+    healthcheck:
+      test: ["CMD", "/app/sidecar", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      deepiri-dev-network:
+        aliases:
+          - synapse-sidecar
+
   # Jupyter Notebook for AI Research
   # DISABLED: No services depend on Jupyter - it's only for manual research/experimentation
   # jupyter:
@@ -1299,6 +1373,8 @@ volumes:
   etcd_dev_data:
     driver: local
   minio_dev_data:
+    driver: local
+  synapse_sugar_glider_dev_wal:
     driver: local
 
 networks:
