@@ -10,9 +10,6 @@ data:
   NODE_ENV: "development"
   PORT: "5003"
 
-  # Database URLs (using Docker service names)
-  DATABASE_URL: "postgresql://deepiri:deepiripassword@postgres-core:5432/deepiri"
-
   # Redis Configuration
   REDIS_HOST: "redis"
   REDIS_PORT: "6379"
