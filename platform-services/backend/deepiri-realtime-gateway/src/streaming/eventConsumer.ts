@@ -10,7 +10,7 @@ import { request as httpsRequest } from 'https';
 import { Server } from 'socket.io';
 import * as grpc from '@grpc/grpc-js';
 import * as protoLoader from '@grpc/proto-loader';
-import { StreamEvent, StreamTopics, secureLog } from '@deepiri/shared-utils';
+import { StreamEvent, StreamTopics, secureLog } from '@team-deepiri/shared-utils';
 
 interface SubscriptionOptions {
   consumerGroup: string;
