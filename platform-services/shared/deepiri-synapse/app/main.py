@@ -132,8 +132,9 @@ async def stream_info(stream_name: str):
     try:
         info = await redis_client.xinfo_stream(stream_name)
         return dict(info)
-    except Exception as e:
-        return {"error": str(e)}
+    except Exception:
+        logger.exception("Failed to retrieve stream information for stream '%s'", stream_name)
+        return {"error": "Failed to retrieve stream information"}
 
 
 @app.get("/streams/{stream_name}/messages")
