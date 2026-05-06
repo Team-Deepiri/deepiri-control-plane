@@ -11,11 +11,11 @@ cd "$PROJECT_ROOT"
 
 # QA team services (language-intelligence-service is optional - only if image exists)
 SERVICES=(
-  postgres redis influxdb
-  api-gateway auth-service task-orchestrator
-  engagement-service platform-analytics-service
-  notification-service external-bridge-service
-  challenge-service realtime-gateway
+  postgres-auth postgres-core postgres-intelligence redis influxdb
+  api-gateway auth-service workflow-orchestrator
+  incentive-engine decision-intelligence
+  communications-hub external-bridge-service
+  adaptive-experience-engine realtime-gateway
   language-intelligence-service messaging-service
   frontend-dev synapse synapse-sugar-glider adminer
   # deepiri-prismpipe  # PrismPipe - Capability-Routed API Pipeline (Coming Soon)
@@ -44,10 +44,10 @@ sleep 3
 # Start backend services (can use --no-deps since infrastructure is up)
 echo "🔧 Starting backend services..."
 docker compose -f docker-compose.dev.yml up -d --no-build --no-deps \
-  api-gateway auth-service task-orchestrator \
-  engagement-service platform-analytics-service \
-  notification-service external-bridge-service \
-  challenge-service realtime-gateway \
+  api-gateway auth-service workflow-orchestrator \
+  incentive-engine decision-intelligence \
+  communications-hub external-bridge-service \
+  adaptive-experience-engine realtime-gateway \
   adminer
 
 # Try to start language-intelligence-service if image exists (optional service)
@@ -82,25 +82,26 @@ echo ""
 echo "Access your services:"
 echo ""
 echo "  Frontend & Services:"
-echo "  - Frontend (Vite HMR):     http://localhost:5173"
-echo "  - API Gateway:             http://localhost:${API_GATEWAY_PORT:-5100}"
-echo "  - Auth Service:            http://localhost:5001"
-echo "  - Task Orchestrator:      http://localhost:5002"
-echo "  - Engagement Service:     http://localhost:5003"
-echo "  - Platform Analytics:      http://localhost:5004"
-echo "  - Notification Service:    http://localhost:5005"
-echo "  - External Bridge:         http://localhost:5006"
-echo "  - Challenge Service:       http://localhost:5007"
-echo "  - Realtime Gateway:        http://localhost:5008"
-echo "  - Messaging Service:       http://localhost:5009"
-echo "  - Synapse:                 http://localhost:8002"
+echo "  - Frontend (Vite HMR):              http://localhost:5173"
+echo "  - API Gateway:                      http://localhost:${API_GATEWAY_PORT:-5100}"
+echo "  - Auth Service:                     http://localhost:5001"
+echo "  - Workflow Orchestrator:            http://localhost:5002"
+echo "  - Incentive Engine:                 http://localhost:5003"
+echo "  - Decision Intelligence:            http://localhost:5004"
+echo "  - Communications Hub:               http://localhost:5005"
+echo "  - External Bridge:                  http://localhost:5006"
+echo "  - Adaptive Experience Engine:       http://localhost:5007"
+echo "  - Realtime Gateway:                 http://localhost:5008"
+echo "  - Messaging Service:                http://localhost:5009"
+echo "  - Synapse:                          http://localhost:8002"
 echo ""
 echo "  Infrastructure:"
-echo "  - PostgreSQL:             localhost:5432"
-echo "  - Redis:                  localhost:6380"
-echo "  - InfluxDB:               http://localhost:8086"
-echo "  - pgAdmin:                http://localhost:5050"
-echo "  - Adminer:                http://localhost:8080"
+echo "  - PostgreSQL (core):              localhost:5432"
+echo "  - PostgreSQL (auth):              localhost:5433"
+echo "  - PostgreSQL (intelligence):      localhost:5434"
+echo "  - Redis:                          localhost:6380"
+echo "  - InfluxDB:                       http://localhost:8086"
+echo "  - Adminer:                        http://localhost:8080"
 echo ""
 echo "Useful commands:"
 echo "  View logs:                docker compose -f docker-compose.dev.yml logs -f ${SERVICES[*]}"
