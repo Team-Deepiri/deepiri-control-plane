@@ -15,7 +15,7 @@ SERVICES=(
   postgres redis influxdb
   mlflow
   # jupyter  # DISABLED: No services depend on Jupyter - it's only for manual research/experimentation
-  platform-analytics-service synapse
+  platform-analytics-service synapse synapse-sugar-glider
 )
 
 echo "🔨 Building ML Team services..."

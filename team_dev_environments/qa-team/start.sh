@@ -17,7 +17,7 @@ SERVICES=(
   notification-service external-bridge-service
   challenge-service realtime-gateway
   language-intelligence-service messaging-service
-  frontend-dev synapse adminer
+  frontend-dev synapse synapse-sugar-glider adminer
   # deepiri-prismpipe  # PrismPipe - Capability-Routed API Pipeline (Coming Soon)
 )
 
@@ -35,7 +35,7 @@ fi
 
 # Start infrastructure services first (without --no-deps to ensure proper startup order)
 echo "📦 Starting infrastructure services..."
-docker compose -f docker-compose.dev.yml up -d --no-build postgres redis influxdb synapse
+docker compose -f docker-compose.dev.yml up -d --no-build postgres redis influxdb synapse synapse-sugar-glider
 
 # Wait a moment for infrastructure to be ready
 echo "⏳ Waiting for infrastructure to be ready..."
