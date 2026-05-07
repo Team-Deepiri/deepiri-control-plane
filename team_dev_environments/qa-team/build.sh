@@ -14,7 +14,7 @@ export DOCKER_BUILDKIT=0
 export COMPOSE_DOCKER_CLI_BUILD=0
 
 SERVICES=(
-  postgres-auth postgres-core postgres-intelligence redis influxdb
+  postgres-auth postgres-core postgres-intelligence redis influxdb kafka
   api-gateway auth-service workflow-orchestrator
   incentive-engine decision-intelligence
   communications-hub external-bridge-service

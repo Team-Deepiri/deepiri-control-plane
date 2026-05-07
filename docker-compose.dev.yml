@@ -352,6 +352,7 @@ services:
       K8S_SERVICE_NAME: api-gateway  # Filter to only load this service's configmap
     volumes:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
+      - ./ops/k8s/load-k8s-env.sh:/usr/local/bin/load-k8s-env.sh:ro
       - ./ops/k8s/secrets:/k8s-secrets:ro
       - ./platform-services/backend/deepiri-api-gateway/src:/app/src
       - ./platform-services/backend/deepiri-api-gateway/tsconfig.json:/app/tsconfig.json
@@ -406,6 +407,7 @@ services:
       K8S_SERVICE_NAME: auth-service  # Filter to only load this service's configmap
     volumes:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
+      - ./ops/k8s/load-k8s-env.sh:/usr/local/bin/load-k8s-env.sh:ro
       - ./ops/k8s/secrets:/k8s-secrets:ro
     command: sh -c "(if [ -f /usr/local/bin/prisma-baseline.sh ]; then /usr/local/bin/prisma-baseline.sh; else echo '[Prisma Baseline] Script not found, skipping baseline (rebuild image to enable)'; npx prisma migrate deploy || true; fi) && npx prisma generate && npm run dev"
     healthcheck:
@@ -415,9 +417,12 @@ services:
       retries: 3
       start_period: 60s
     depends_on:
-      - postgres-auth
-      - influxdb
-      - synapse
+      postgres-auth:
+        condition: service_healthy
+      influxdb:
+        condition: service_started
+      synapse:
+        condition: service_started
     networks:
       - deepiri-dev-network
 
@@ -440,16 +445,23 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_CORE_USER:-deepiri}:${POSTGRES_CORE_PASSWORD:-deepiripassword}@postgres-core:5432/${POSTGRES_CORE_DB:-deepiri}
       PRISMA_CLI_BINARY_TARGETS: "debian-openssl-3.0.x"
       SYNAPSE_URL: http://synapse:8002
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redispassword}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redispassword}@redis:6379
       K8S_SERVICE_NAME: workflow-orchestrator  # Filter to only load this service's configmap
     volumes:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
+      - ./ops/k8s/load-k8s-env.sh:/usr/local/bin/load-k8s-env.sh:ro
       - ./ops/k8s/secrets:/k8s-secrets:ro
       - ./platform-services/backend/deepiri-workflow-orchestrator/src:/app/src
       - ./platform-services/backend/deepiri-workflow-orchestrator/tsconfig.json:/app/tsconfig.json
     command: node dist/server.js
     depends_on:
-      - postgres-core
-      - synapse
+      postgres-core:
+        condition: service_healthy
+      synapse:
+        condition: service_started
     networks:
       - deepiri-dev-network
 
@@ -471,17 +483,25 @@ services:
       PORT: 5003
       DATABASE_URL: postgresql://${POSTGRES_CORE_USER:-deepiri}:${POSTGRES_CORE_PASSWORD:-deepiripassword}@postgres-core:5432/${POSTGRES_CORE_DB:-deepiri}
       SYNAPSE_URL: http://synapse:8002
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redispassword}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redispassword}@redis:6379
       K8S_SERVICE_NAME: incentive-engine  # Filter to only load this service's configmap
     volumes:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
+      - ./ops/k8s/load-k8s-env.sh:/usr/local/bin/load-k8s-env.sh:ro
       - ./ops/k8s/secrets:/k8s-secrets:ro
       - ./platform-services/backend/deepiri-incentive-engine/src:/app/src
       - ./platform-services/backend/deepiri-incentive-engine/tsconfig.json:/app/tsconfig.json
     command: node dist/server.js
     depends_on:
-      - postgres-core
-      - redis
-      - synapse
+      postgres-core:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      synapse:
+        condition: service_started
     networks:
       - deepiri-dev-network
 
@@ -506,6 +526,7 @@ services:
       K8S_SERVICE_NAME: decision-intelligence  # Filter to only load this service's configmap
     volumes:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
+      - ./ops/k8s/load-k8s-env.sh:/usr/local/bin/load-k8s-env.sh:ro
       - ./ops/k8s/secrets:/k8s-secrets:ro
       - ./platform-services/backend/deepiri-decision-intelligence/src:/app/src
       - ./platform-services/backend/deepiri-decision-intelligence/tsconfig.json:/app/tsconfig.json
@@ -538,13 +559,18 @@ services:
       K8S_SERVICE_NAME: communications-hub  # Filter to only load this service's configmap
     volumes:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
+      - ./ops/k8s/load-k8s-env.sh:/usr/local/bin/load-k8s-env.sh:ro
       - ./ops/k8s/secrets:/k8s-secrets:ro
       - ./platform-services/backend/deepiri-communications-hub/src:/app/src
       - ./platform-services/backend/deepiri-communications-hub/tsconfig.json:/app/tsconfig.json
     command: node dist/server.js
     depends_on:
-      - postgres-core
-      - synapse
+      postgres-core:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      synapse:
+        condition: service_started
     networks:
       - deepiri-dev-network
 
@@ -577,6 +603,7 @@ services:
       K8S_SERVICE_NAME: external-bridge-service  # Filter to only load this service's configmap
     volumes:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
+      - ./ops/k8s/load-k8s-env.sh:/usr/local/bin/load-k8s-env.sh:ro
       - ./ops/k8s/secrets:/k8s-secrets:ro
       - ./platform-services/backend/deepiri-external-bridge-service/src:/app/src
       - ./platform-services/backend/deepiri-external-bridge-service/tsconfig.json:/app/tsconfig.json
@@ -588,9 +615,12 @@ services:
       retries: 3
       start_period: 20s
     depends_on:
-      - postgres-core
-      - synapse
-      - kafka
+      postgres-core:
+        condition: service_healthy
+      synapse:
+        condition: service_started
+      kafka:
+        condition: service_started
     networks:
       - deepiri-dev-network
 
@@ -615,6 +645,7 @@ services:
       K8S_SERVICE_NAME: adaptive-experience-engine  # Filter to only load this service's configmap
     volumes:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
+      - ./ops/k8s/load-k8s-env.sh:/usr/local/bin/load-k8s-env.sh:ro
       - ./ops/k8s/secrets:/k8s-secrets:ro
       - ./platform-services/backend/deepiri-adaptive-experience-engine/src:/app/src
       - ./platform-services/backend/deepiri-adaptive-experience-engine/tsconfig.json:/app/tsconfig.json
@@ -636,6 +667,7 @@ services:
     container_name: deepiri-language-intelligence-service-dev
     restart: unless-stopped
     logging: *minimal-logging
+    user: root
     # Port exposed for development only
     # In production: Remove this port mapping - only access through API Gateway
     ports:
@@ -658,6 +690,7 @@ services:
       K8S_SERVICE_NAME: language-intelligence-service
     volumes:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
+      - ./ops/k8s/load-k8s-env.sh:/usr/local/bin/load-k8s-env.sh:ro
       - ./ops/k8s/secrets:/k8s-secrets:ro
       - ./platform-services/shared/deepiri-shared-utils:/shared-utils
       - ./platform-services/backend/deepiri-language-intelligence-service/src:/app/src
@@ -671,12 +704,18 @@ services:
       retries: 3
       start_period: 20s
     depends_on:
-      - postgres-intelligence
-      - redis
-      - minio
-      - cyrex
-      - auth-service
-      - synapse
+      postgres-intelligence:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      minio:
+        condition: service_started
+      cyrex:
+        condition: service_started
+      auth-service:
+        condition: service_started
+      synapse:
+        condition: service_started
     networks:
       - deepiri-dev-network
 
@@ -704,6 +743,7 @@ services:
       K8S_SERVICE_NAME: messaging-service
     volumes:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
+      - ./ops/k8s/load-k8s-env.sh:/usr/local/bin/load-k8s-env.sh:ro
       - ./ops/k8s/secrets:/k8s-secrets:ro
       - ./platform-services/shared/deepiri-shared-utils:/shared-utils
       - ./platform-services/backend/deepiri-messaging-service/src:/app/src
@@ -774,6 +814,7 @@ services:
       K8S_SERVICE_NAME: realtime-gateway  # Filter to only load this service's configmap
     volumes:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
+      - ./ops/k8s/load-k8s-env.sh:/usr/local/bin/load-k8s-env.sh:ro
       - ./ops/k8s/secrets:/k8s-secrets:ro
       - ./platform-services/backend/deepiri-realtime-gateway/src:/app/src
       - ./platform-services/backend/deepiri-realtime-gateway/tsconfig.json:/app/tsconfig.json
@@ -821,30 +862,17 @@ services:
     container_name: deepiri-ollama-dev
     restart: unless-stopped
     logging: *minimal-logging
-    runtime: nvidia  # Enable NVIDIA GPU runtime
+    # runtime: nvidia and deploy.resources.reservations are in docker-compose.dev.gpu.yml
+    # Base config runs CPU-only for compatibility on all machines
     ports:
       - "${OLLAMA_PORT:-11435}:11434"
     volumes:
       - ollama_dev_data:/root/.ollama
     environment:
       OLLAMA_HOST: 0.0.0.0
-      OLLAMA_KEEP_ALIVE: "24h"  # Increased from 30m to prevent model reloads
+      OLLAMA_KEEP_ALIVE: "24h"
       OLLAMA_NUM_PARALLEL: "4"
-      # GPU optimizations for RTX 5080 (sm_120, tensor cores)
-      CUDA_VISIBLE_DEVICES: "0"  # Use first GPU
-      NVIDIA_VISIBLE_DEVICES: "all"
-      NVIDIA_DRIVER_CAPABILITIES: "compute,utility"
-      # Ollama GPU optimizations
-      OLLAMA_NUM_GPU: "1"
-      OLLAMA_GPU_OVERHEAD: "0"  # Minimize VRAM overhead
-      OLLAMA_MAX_LOADED_MODELS: "2"  # Keep 2 models in VRAM
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+      OLLAMA_MAX_LOADED_MODELS: "2"
     networks:
       - deepiri-dev-network
 
@@ -926,6 +954,7 @@ services:
       - "8000:8000"
     volumes:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
+      - ./ops/k8s/load-k8s-env.sh:/usr/local/bin/load-k8s-env.sh:ro
       - ./ops/k8s/secrets:/k8s-secrets:ro
       - ./diri-cyrex/app:/app/app
       - ./diri-cyrex/train:/app/train
@@ -1172,8 +1201,8 @@ services:
   # Deepiri Synapse - Central Streaming Service
   synapse:
     build:
-      context: .
-      dockerfile: ./platform-services/shared/deepiri-synapse/Dockerfile
+      context: ./platform-services/shared/deepiri-synapse
+      dockerfile: Dockerfile
     container_name: deepiri-synapse-dev
     restart: unless-stopped
     logging: *minimal-logging
@@ -1187,6 +1216,7 @@ services:
       K8S_SERVICE_NAME: synapse  # Filter to only load this service's configmap
     volumes:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
+      - ./ops/k8s/load-k8s-env.sh:/usr/local/bin/load-k8s-env.sh:ro
       - ./ops/k8s/secrets:/k8s-secrets:ro
     healthcheck:
       test:
@@ -1218,7 +1248,7 @@ services:
       - "50051:50051"
     environment:
       SIDECAR_SERVICE_NAME: deepiri-platform
-      SIDECAR_REDIS_URL: redis://:redispassword@redis:6379/0
+      SIDECAR_REDIS_URL: redis://:${REDIS_PASSWORD:-redispassword}@redis:6379/0
       SIDECAR_LISTEN_ADDR: tcp://0.0.0.0:8081
       SIDECAR_GRPC_ADDR: tcp://0.0.0.0:50051
       SIDECAR_PUBLISH_STREAMS: platform-events,inference-events,model-events,training-events
@@ -1300,6 +1330,7 @@ services:
       K8S_SERVICE_NAME: frontend-dev  # Filter to only load this service's configmap
     volumes:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
+      - ./ops/k8s/load-k8s-env.sh:/usr/local/bin/load-k8s-env.sh:ro
       - ./ops/k8s/secrets:/k8s-secrets:ro
       - ./deepiri-web-frontend:/app
       - /app/node_modules
