@@ -126,11 +126,35 @@ def enable_auto_merge(repo_name: str, pr_url: str) -> tuple[bool, str]:
 
     pr_number = match.group(1)
 
+    node_result = gh("api", f"repos/{repo}/pulls/{pr_number}", "--jq", ".node_id")
+    if node_result.returncode != 0:
+        return False, (node_result.stderr or node_result.stdout).strip()
+
+    pull_request_id = node_result.stdout.strip().strip('"')
+    if not pull_request_id:
+        return False, f"Unable to fetch GraphQL node id for PR '{pr_url}'"
+
+    graphql_query = """
+    mutation($pullRequestId: ID!) {
+      enablePullRequestAutoMerge(input: {pullRequestId: $pullRequestId, mergeMethod: SQUASH}) {
+        pullRequest {
+          url
+          autoMergeRequest {
+            enabledAt
+          }
+        }
+      }
+    }
+    """
+
     result = subprocess.run(
-        ["gh", "api", f"repos/{repo}/pulls/{pr_number}/auto_merge",
-         "-X", "PUT",
-         "-f", "merge_method=squash"],
-        capture_output=True, text=True
+        [
+            "gh", "api", "graphql",
+            "-f", f"query={graphql_query}",
+            "-f", f"pullRequestId={pull_request_id}",
+        ],
+        capture_output=True,
+        text=True,
     )
     if result.returncode == 0:
         return True, "Auto-merge enabled"
