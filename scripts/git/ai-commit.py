@@ -26,6 +26,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from typing import Optional
+from deepiri_ollama.runtime import check, has_model, verify_models
 
 try:
     import httpx
@@ -1896,7 +1897,8 @@ async def main():
         print(f"{Colors.RED}No repositories with changes to process.{Colors.NC}")
         sys.exit(0)
 
-    if not is_ollama_running(ollama_url):
+    status = check()
+    if not status["ok"]:
         print(f"\n{Colors.YELLOW}Ollama is not running.{Colors.NC}")
         print(f"{Colors.CYAN}[s] Start automatically  [m] Pull models  [q] Quit: {Colors.NC}", end="")
         response = input().strip().lower()
