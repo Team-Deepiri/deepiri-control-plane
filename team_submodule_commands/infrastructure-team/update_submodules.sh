@@ -93,8 +93,6 @@ echo ""
 echo "🔄 Updating Infrastructure Team submodules..."
 echo ""
 
-# Update deepiri-core-api
-update_submodule "deepiri-core-api" "deepiri-core-api (Core API)"
 echo ""
 
 # Update diri-cyrex
@@ -127,7 +125,6 @@ echo ""
 
 # Also update via git submodule update --remote for consistency
 echo "🔄 Syncing submodule references..."
-git submodule update --remote deepiri-core-api 2>/dev/null || true
 git submodule update --remote diri-cyrex 2>/dev/null || true
 git submodule update --remote diri-persola 2>/dev/null || true
 git submodule update --remote platform-services/backend/deepiri-api-gateway 2>/dev/null || true
@@ -140,7 +137,6 @@ echo ""
 # Show status
 echo "📊 Submodule Status:"
 echo ""
-git submodule status deepiri-core-api
 git submodule status diri-cyrex
 git submodule status diri-persola
 git submodule status platform-services/backend/deepiri-api-gateway
@@ -153,7 +149,6 @@ echo ""
 echo "✅ Infrastructure Team submodules updated!"
 echo ""
 echo "📋 Updated Submodules:"
-echo "  ✅ deepiri-core-api"
 echo "  ✅ diri-cyrex"
 echo "  ✅ diri-persola (Persola)"
 echo "  ✅ deepiri-api-gateway"

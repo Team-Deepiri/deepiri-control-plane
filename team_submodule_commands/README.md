@@ -66,7 +66,6 @@ git pull origin main
 | Submodule | Path | Team(s) |
 |-----------|------|---------|
 | **diri-cyrex** | `diri-cyrex` | AI, ML |
-| **deepiri-core-api** | `deepiri-core-api` | Backend |
 | **deepiri-web-frontend** | `deepiri-web-frontend` | Frontend, Backend |
 | **deepiri-api-gateway** | `platform-services/backend/deepiri-api-gateway` | Infrastructure, Backend, Platform |
 | **deepiri-auth-service** | `platform-services/backend/deepiri-auth-service` | Backend, Platform |
@@ -117,7 +116,7 @@ All feature and bug fix branches must follow this naming convention:
 - **Directory**: `backend-team/`
 - **Guide**: [BACKEND_TEAM.md](./backend-team/BACKEND_TEAM.md)
 - **Pull Script**: `./team_submodule_commands/backend-team/pull_submodules.sh`
-- **Required Submodules**: `deepiri-core-api`, `deepiri-api-gateway`, `deepiri-auth-service`, `deepiri-external-bridge-service`, `deepiri-web-frontend`
+- **Required Submodules**: `deepiri-api-gateway`, `deepiri-auth-service`, `deepiri-external-bridge-service`, `deepiri-web-frontend`
 
 ### Frontend Team
 - **Directory**: `frontend-team/`

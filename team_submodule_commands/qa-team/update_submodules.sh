@@ -109,8 +109,6 @@ echo ""
 update_submodule "platform-services/backend/deepiri-language-intelligence-service" "deepiri-language-intelligence-service (Language Intelligence)"
 echo ""
 
-# Update deepiri-core-api
-update_submodule "deepiri-core-api" "deepiri-core-api (Core API)"
 echo ""
 
 # Update deepiri-web-frontend
@@ -131,7 +129,6 @@ git submodule update --remote platform-services/backend/deepiri-auth-service 2>/
 git submodule update --remote platform-services/backend/deepiri-external-bridge-service 2>/dev/null || true
 git submodule update --remote platform-services/backend/deepiri-api-gateway 2>/dev/null || true
 git submodule update --remote platform-services/backend/deepiri-language-intelligence-service 2>/dev/null || true
-git submodule update --remote deepiri-core-api 2>/dev/null || true
 git submodule update --remote deepiri-web-frontend 2>/dev/null || true
 git submodule update --remote platform-services/shared/deepiri-prismpipe 2>/dev/null || true
 git submodule update --remote diri-persola 2>/dev/null || true
@@ -144,7 +141,6 @@ git submodule status platform-services/backend/deepiri-auth-service
 git submodule status platform-services/backend/deepiri-external-bridge-service
 git submodule status platform-services/backend/deepiri-api-gateway
 git submodule status platform-services/backend/deepiri-language-intelligence-service
-git submodule status deepiri-core-api
 git submodule status deepiri-web-frontend
 git submodule status platform-services/shared/deepiri-prismpipe 2>/dev/null || echo "  ⚠️  deepiri-prismpipe (not initialized)"
 git submodule status diri-persola
@@ -157,7 +153,6 @@ echo "  ✅ deepiri-auth-service"
 echo "  ✅ deepiri-external-bridge-service"
 echo "  ✅ deepiri-api-gateway"
 echo "  ✅ deepiri-language-intelligence-service"
-echo "  ✅ deepiri-core-api"
 echo "  ✅ deepiri-web-frontend"
 echo "  ✅ deepiri-prismpipe (PrismPipe)"
 echo "  ✅ diri-persola (Persola)"

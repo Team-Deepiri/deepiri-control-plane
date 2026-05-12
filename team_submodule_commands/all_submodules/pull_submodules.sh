@@ -74,18 +74,6 @@ ensure_submodule_on_main() {
     return 0
 }
 
-# deepiri-core-api
-echo "  📦 deepiri-core-api (Core API - Team-Deepiri/deepiri-core-api)..."
-cleanup_invalid_submodule "deepiri-core-api"
-git submodule update --init --recursive deepiri-core-api 2>&1 || true
-if ! check_submodule "deepiri-core-api"; then
-    echo "    ❌ ERROR: deepiri-core-api not cloned correctly!"
-    echo "    💡 Try: git submodule update --init --recursive deepiri-core-api"
-    exit 1
-fi
-echo "    ✅ core-api initialized at: $(pwd)/deepiri-core-api"
-echo ""
-
 # diri-cyrex
 echo "  📦 diri-cyrex (Cyrex - Team-Deepiri/diri-cyrex)..."
 cleanup_invalid_submodule "diri-cyrex"
@@ -208,7 +196,6 @@ echo ""
 
 # Verify submodules at platform-pinned commits
 echo "🔄 Updating submodules to main branch..."
-ensure_submodule_on_main "deepiri-core-api"
 ensure_submodule_on_main "diri-cyrex"
 ensure_submodule_on_main "platform-services/backend/deepiri-api-gateway"
 ensure_submodule_on_main "deepiri-web-frontend"
@@ -225,7 +212,6 @@ echo ""
 # Show status
 echo "📊 Submodule Status:"
 echo ""
-git submodule status deepiri-core-api
 git submodule status diri-cyrex
 git submodule status platform-services/backend/deepiri-api-gateway
 git submodule status deepiri-web-frontend
@@ -241,7 +227,6 @@ echo ""
 echo "✅ All submodules ready!"
 echo ""
 echo "📋 All Submodules:"
-echo "  ✅ deepiri-core-api"
 echo "  ✅ diri-cyrex"
 echo "  ✅ deepiri-api-gateway"
 echo "  ✅ deepiri-web-frontend"
@@ -256,7 +241,6 @@ echo ""
 echo "📋 Quick Commands:"
 echo "  - Check status: git submodule status"
 echo "  - Update all: git submodule update --init"
-echo "  - Work in Core API: cd deepiri-core-api"
 echo "  - Work in Cyrex: cd diri-cyrex"
 echo "  - Work in API Gateway: cd platform-services/backend/deepiri-api-gateway"
 echo "  - Work in Frontend: cd deepiri-web-frontend"
@@ -267,4 +251,3 @@ echo "  - Work in Model Kit: cd deepiri-modelkit"
 echo "  - Work in Language Intelligence: cd platform-services/backend/deepiri-language-intelligence-service"
 echo "  - Work in PrismPipe: cd platform-services/shared/deepiri-prismpipe"
 echo ""
-

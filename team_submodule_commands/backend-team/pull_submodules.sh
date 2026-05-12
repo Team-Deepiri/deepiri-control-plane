@@ -35,7 +35,6 @@ echo ""
 
 # Backend Team required submodules
 # Backend Team has direct access to these repositories:
-# - Team-Deepiri/deepiri-core-api
 # - Team-Deepiri/deepiri-api-gateway
 # - Team-Deepiri/deepiri-auth-service
 # - Team-Deepiri/deepiri-external-bridge-service
@@ -79,18 +78,6 @@ ensure_submodule_on_main() {
     echo "    📌 Leaving $submodule_path at the platform-pinned commit"
     return 0
 }
-
-# deepiri-core-api
-echo "  📦 deepiri-core-api (Core API - Team-Deepiri/deepiri-core-api)..."
-cleanup_invalid_submodule "deepiri-core-api"
-git submodule update --init --recursive deepiri-core-api 2>&1 || true
-if ! check_submodule "deepiri-core-api"; then
-    echo "    ❌ ERROR: deepiri-core-api not cloned correctly!"
-    echo "    💡 Try: git submodule update --init --recursive deepiri-core-api"
-    exit 1
-fi
-echo "    ✅ core-api initialized at: $(pwd)/deepiri-core-api"
-echo ""
 
 # deepiri-api-gateway
 echo "  📦 deepiri-api-gateway (API Gateway - Team-Deepiri/deepiri-api-gateway)..."
@@ -178,8 +165,6 @@ echo ""
 
 # Initialize submodules at platform-pinned commits
 echo "🔄 Verifying submodules at platform-pinned commits..."
-git submodule update --init deepiri-core-api
-ensure_submodule_on_main "deepiri-core-api"
 git submodule update --init platform-services/backend/deepiri-api-gateway
 ensure_submodule_on_main "platform-services/backend/deepiri-api-gateway"
 git submodule update --init platform-services/backend/deepiri-auth-service
@@ -200,7 +185,6 @@ echo ""
 # Show status
 echo "📊 Submodule Status:"
 echo ""
-git submodule status deepiri-core-api
 git submodule status platform-services/backend/deepiri-api-gateway
 git submodule status platform-services/backend/deepiri-auth-service
 git submodule status platform-services/backend/deepiri-external-bridge-service
@@ -212,7 +196,6 @@ echo ""
 echo "✅ Backend Team submodules ready!"
 echo ""
 echo "📋 Backend Team Repositories (Direct Access):"
-echo "  ✅ Team-Deepiri/deepiri-core-api"
 echo "  ✅ Team-Deepiri/deepiri-api-gateway"
 echo "  ✅ Team-Deepiri/deepiri-auth-service"
 echo "  ✅ Team-Deepiri/deepiri-external-bridge-service"
@@ -223,7 +206,6 @@ echo ""
 echo "📋 Quick Commands:"
 echo "  - Check status: git submodule status"
 echo "  - Update all: git submodule update --init"
-echo "  - Work in Core API: cd deepiri-core-api"
 echo "  - Work in API Gateway: cd platform-services/backend/deepiri-api-gateway"
 echo "  - Work in Auth Service: cd platform-services/backend/deepiri-auth-service"
 echo "  - Work in External Bridge: cd platform-services/backend/deepiri-external-bridge-service"
@@ -242,4 +224,3 @@ else
     echo "   Hooks will not be automatically configured."
 fi
 echo ""
-

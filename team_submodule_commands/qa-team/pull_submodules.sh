@@ -20,7 +20,6 @@ declare -a SUBMODULES=(
   "platform-services/backend/deepiri-external-bridge-service"
   "platform-services/backend/deepiri-api-gateway"
   "platform-services/backend/deepiri-language-intelligence-service"
-  "deepiri-core-api"
   "deepiri-web-frontend"
   "platform-services/shared/deepiri-prismpipe"
   "platform-services/shared/deepiri-shared-utils"
