@@ -42,3 +42,6 @@
 	path = platform-services/shared/deepiri-sugar-glider
 	url = git@github.com:Team-Deepiri/deepiri-sugar-glider.git
 	branch = dev
+[submodule "deepiri-ollama-utils"]
+	path = deepiri-ollama-utils
+	url = https://github.com/Team-Deepiri/deepiri-ollama-utils.git
