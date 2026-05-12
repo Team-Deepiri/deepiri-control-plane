@@ -121,9 +121,11 @@ echo ""
 update_submodule "platform-services/shared/deepiri-prismpipe" "deepiri-prismpipe (PrismPipe - Capability-Routed API Pipeline)"
 echo ""
 
-# Update diri-persola
-update_submodule "diri-persola" "diri-persola (Persola - Personalized Agentic Framework)"
-echo ""
+# Update deepiri-ollama-utils
+update_submodule "deepiri-ollama-utils" "deepiri-ollama-utils (Shared Ollama Utilities)"
+git submodule update --remote deepiri-ollama-utils 2>/dev/null || true
+git submodule status deepiri-ollama-utils
+echo "  ✅ deepiri-ollama-utils (Ollama Utils)"
 
 # Update deepiri-synapse
 update_submodule "platform-services/shared/deepiri-synapse" "deepiri-synapse (Matrix server)"
@@ -142,7 +144,6 @@ git submodule update --remote platform-services/backend/deepiri-language-intelli
 git submodule update --remote deepiri-core-api 2>/dev/null || true
 git submodule update --remote deepiri-web-frontend 2>/dev/null || true
 git submodule update --remote platform-services/shared/deepiri-prismpipe 2>/dev/null || true
-git submodule update --remote diri-persola 2>/dev/null || true
 git submodule update --remote platform-services/shared/deepiri-synapse 2>/dev/null || true
 git submodule update --remote platform-services/shared/deepiri-sugar-glider 2>/dev/null || true
 echo ""
@@ -157,7 +158,6 @@ git submodule status platform-services/backend/deepiri-language-intelligence-ser
 git submodule status deepiri-core-api
 git submodule status deepiri-web-frontend
 git submodule status platform-services/shared/deepiri-prismpipe 2>/dev/null || echo "  ⚠️  deepiri-prismpipe (not initialized)"
-git submodule status diri-persola
 git submodule status platform-services/shared/deepiri-synapse 2>/dev/null || echo "  ⚠️  deepiri-synapse (not initialized)"
 git submodule status platform-services/shared/deepiri-sugar-glider 2>/dev/null || echo "  ⚠️  deepiri-sugar-glider (not initialized)"
 echo ""
@@ -172,7 +172,6 @@ echo "  ✅ deepiri-language-intelligence-service"
 echo "  ✅ deepiri-core-api"
 echo "  ✅ deepiri-web-frontend"
 echo "  ✅ deepiri-prismpipe (PrismPipe)"
-echo "  ✅ diri-persola (Persola)"
 echo "  ✅ deepiri-synapse"
 echo "  ✅ deepiri-sugar-glider"
 echo ""

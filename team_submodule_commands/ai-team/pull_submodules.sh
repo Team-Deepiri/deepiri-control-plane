@@ -122,11 +122,18 @@ git submodule update --init --recursive diri-cyrex
 echo "    ✅ diri-cyrex initialized"
 echo ""
 
-# diri-persola - Personalized Agentic Framework
-echo "  📦 diri-persola (Persola - Personalized Agentic Framework)..."
-git submodule update --init --recursive diri-persola
-echo "    ✅ diri-persola initialized"
-echo ""
+# deepiri-ollama-utils - Shared Ollama runtime and CLI utilities
+echo "  📦 deepiri-ollama-utils (Shared Ollama Utilities)..."
+git submodule update --init --recursive deepiri-ollama-utils
+echo "    ✅ deepiri-ollama-utils initialized"
+
+git submodule update --remote deepiri-ollama-utils
+ensure_submodule_on_main "deepiri-ollama-utils"
+echo "    ✅ deepiri-ollama-utils updated and on main branch"
+
+git submodule status deepiri-ollama-utils
+echo "  - Check status: git submodule status deepiri-ollama-utils"
+echo "  - Update: git submodule update --remote deepiri-ollama-utils"
 
 
 # deepiri-modelkit - Shared contracts and utilities
@@ -205,9 +212,6 @@ echo "    ✅ diri-cyrex updated and on main branch"
 git submodule update --remote platform-services/shared/deepiri-shared-utils 2>/dev/null || true
 ensure_submodule_on_main "platform-services/shared/deepiri-shared-utils"
 echo "    ✅ shared-utils updated and on main branch"
-git submodule update --remote diri-persola
-ensure_submodule_on_main "diri-persola"
-echo "    ✅ diri-persola updated and on main branch"
 git submodule update --remote platform-services/backend/deepiri-api-gateway
 ensure_submodule_on_main "platform-services/backend/deepiri-api-gateway"
 echo "    ✅ api-gateway updated and on main branch"
@@ -229,7 +233,6 @@ echo ""
 echo "📊 Submodule Status:"
 echo ""
 git submodule status diri-cyrex
-git submodule status diri-persola
 git submodule status platform-services/backend/deepiri-api-gateway
 git submodule status deepiri-modelkit 2>/dev/null || echo "  ⚠️  deepiri-modelkit (not initialized)"
 git submodule status platform-services/shared/deepiri-prismpipe 2>/dev/null || echo "  ⚠️  deepiri-prismpipe (not initialized)"
@@ -242,14 +245,12 @@ echo "✅ AI Team submodules ready!"
 echo ""
 echo "📋 Quick Commands:"
 echo "  - Check status: git submodule status diri-cyrex"
-echo "  - Check status: git submodule status diri-persola"
 echo "  - Check status: git submodule status platform-services/backend/deepiri-api-gateway"
 echo "  - Check status: git submodule status deepiri-modelkit"
 echo "  - Check status: git submodule status platform-services/shared/deepiri-prismpipe"
 echo "  - Check status: git submodule status platform-services/shared/deepiri-synapse"
 echo "  - Check status: git submodule status platform-services/shared/deepiri-sugar-glider"
 echo "  - Update: git submodule update --remote diri-cyrex"
-echo "  - Update: git submodule update --remote diri-persola"
 echo "  - Update: git submodule update --remote platform-services/backend/deepiri-api-gateway"
 echo "  - Update: git submodule update --remote deepiri-modelkit"
 echo "  - Update: git submodule update --remote platform-services/shared/deepiri-prismpipe"
