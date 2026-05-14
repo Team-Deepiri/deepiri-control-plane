@@ -11,22 +11,16 @@ cd "$PROJECT_ROOT"
 
 # QA team services (language-intelligence-service is handled separately — optional)
 SERVICES=(
-<<<<<<< HEAD
   postgres-auth postgres-core postgres-intelligence redis influxdb
-=======
   postgres-auth postgres-core postgres-intelligence redis influxdb kafka
   synapse synapse-sugar-glider
->>>>>>> origin/dev
   api-gateway auth-service workflow-orchestrator
   incentive-engine decision-intelligence
   communications-hub external-bridge-service
   adaptive-experience-engine realtime-gateway
-<<<<<<< HEAD
   language-intelligence-service messaging-service
   frontend-dev synapse synapse-sugar-glider adminer
-=======
   messaging-service frontend-dev adminer
->>>>>>> origin/dev
   # deepiri-prismpipe  # PrismPipe - Capability-Routed API Pipeline (Coming Soon)
 )
 
@@ -42,7 +36,6 @@ echo ""
 #   echo ""
 # fi
 
-<<<<<<< HEAD
 # Start infrastructure services first (without --no-deps to ensure proper startup order)
 echo "📦 Starting infrastructure services..."
 docker compose -f docker-compose.dev.yml up -d --no-build postgres-auth postgres-core postgres-intelligence redis influxdb synapse synapse-sugar-glider
@@ -61,12 +54,10 @@ docker compose -f docker-compose.dev.yml up -d --no-build --no-deps \
   adminer
 
 # Try to start language-intelligence-service if image exists (optional service)
-=======
 echo "🔧 Starting services..."
 docker compose -f docker-compose.dev.yml up -d --no-build --no-deps "${SERVICES[@]}"
 
 # language-intelligence-service is optional — only start if image exists
->>>>>>> origin/dev
 if docker image inspect deepiri-dev-language-intelligence-service:latest >/dev/null 2>&1; then
   echo "📝 Starting language-intelligence-service..."
   docker compose -f docker-compose.dev.yml up -d --no-build --no-deps language-intelligence-service || echo "⚠️  language-intelligence-service failed to start (optional service)"
@@ -80,7 +71,6 @@ echo ""
 echo "Access your services:"
 echo ""
 echo "  Frontend & Services:"
-<<<<<<< HEAD
 echo "  - Frontend (Vite HMR):     http://localhost:5173"
 echo "  - API Gateway:             http://localhost:${API_GATEWAY_PORT:-5100}"
 echo "  - Auth Service:            http://localhost:5001"
@@ -93,7 +83,6 @@ echo "  - Adaptive Experience:     http://localhost:5007"
 echo "  - Realtime Gateway:        http://localhost:5008"
 echo "  - Messaging Service:       http://localhost:5009"
 echo "  - Synapse:                 http://localhost:8002"
-=======
 echo "  - Frontend (Vite HMR):              http://localhost:5173"
 echo "  - API Gateway:                      http://localhost:${API_GATEWAY_PORT:-5100}"
 echo "  - Auth Service:                     http://localhost:5001"
@@ -106,7 +95,6 @@ echo "  - Adaptive Experience Engine:       http://localhost:5007"
 echo "  - Realtime Gateway:                 http://localhost:5008"
 echo "  - Messaging Service:                http://localhost:5009"
 echo "  - Synapse:                          http://localhost:8002"
->>>>>>> origin/dev
 echo ""
 echo "  Infrastructure:"
 echo "  - PostgreSQL (core):              localhost:5432"

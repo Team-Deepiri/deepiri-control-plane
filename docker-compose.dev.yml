@@ -1201,8 +1201,8 @@ services:
   # Deepiri Synapse - Central Streaming Service
   synapse:
     build:
-      context: ./platform-services/shared/deepiri-synapse
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: platform-services/shared/deepiri-synapse/Dockerfile
     container_name: deepiri-synapse-dev
     restart: unless-stopped
     logging: *minimal-logging
