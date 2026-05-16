@@ -8,7 +8,8 @@
 
 set -e
 
-cd "$(dirname "$0")/../.." || exit 1
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+cd "$REPO_ROOT" || exit 1
 
 # Force legacy builder. Docker Desktop / WSL2 on Windows hosts hits a
 # BuildKit snapshot-commit bug ("snapshot does not exist: not found")
@@ -16,6 +17,10 @@ cd "$(dirname "$0")/../.." || exit 1
 # The legacy builder is slower but reliable.
 export DOCKER_BUILDKIT=0
 export COMPOSE_DOCKER_CLI_BUILD=0
+
+# shellcheck source=../shared/ensure-suite-images.sh
+source "$REPO_ROOT/team_dev_environments/shared/ensure-suite-images.sh"
+ensure_suite_images "$REPO_ROOT" || exit 1
 
 # Infrastructure team services (currently same as backend team)
 # Future: Will include cloud infrastructure and data infrastructure services
