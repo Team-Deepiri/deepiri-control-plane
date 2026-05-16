@@ -129,12 +129,6 @@ echo ""
 update_submodule "platform-services/shared/deepiri-sugar-glider" "deepiri-sugar-glider (Synapse stream bridge)"
 echo ""
 
-# Update deepiri-ollama-utils
-update_submodule "deepiri-ollama-utils" "deepiri-ollama-utils (Shared Ollama Utilities)"
-git submodule update --remote deepiri-ollama-utils 2>/dev/null || true
-git submodule status deepiri-ollama-utils
-echo "  ✅ deepiri-ollama-utils (Ollama Utils)"
-
 # Also update via git submodule update --remote for consistency
 echo "🔄 Syncing submodule references..."
 git submodule update --remote deepiri-core-api 2>/dev/null || true

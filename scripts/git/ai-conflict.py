@@ -20,7 +20,6 @@ import tempfile
 import shutil
 from functools import lru_cache
 from typing import Optional
-from deepiri_ollama.runtime import check, has_model, verify_models
 
 import difflib
 

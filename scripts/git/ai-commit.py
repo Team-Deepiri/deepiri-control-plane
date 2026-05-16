@@ -26,7 +26,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from typing import Optional
-from deepiri_ollama.runtime import check, has_model, verify_models
+from deepiri_ollama.runtime import check
 
 try:
     import httpx
