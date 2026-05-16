@@ -4,11 +4,16 @@
 
 set -e
 
-cd "$(dirname "$0")/../.." || exit 1
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+cd "$REPO_ROOT" || exit 1
 
 # Enable BuildKit for better builds
 export DOCKER_BUILDKIT=1
 export COMPOSE_DOCKER_CLI_BUILD=1
+
+# shellcheck source=../shared/ensure-suite-images.sh
+source "$REPO_ROOT/team_dev_environments/shared/ensure-suite-images.sh"
+ensure_suite_images "$REPO_ROOT" || exit 1
 
 # ML team services
 SERVICES=(
