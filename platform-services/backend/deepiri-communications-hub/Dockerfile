@@ -1,9 +1,11 @@
 FROM ghcr.io/team-deepiri/deepiri-base:18-alpine
 
-COPY shared/deepiri-shared-utils/package*.json /shared/deepiri-shared-utils/
+COPY shared/deepiri-shared-utils/package.json /shared/deepiri-shared-utils/
+COPY shared/deepiri-shared-utils/package-lock.json /shared/deepiri-shared-utils/
 COPY shared/deepiri-shared-utils/tsconfig.json /shared/deepiri-shared-utils/
 COPY shared/deepiri-shared-utils/src /shared/deepiri-shared-utils/src
-COPY backend/deepiri-communications-hub/package*.json ./
+COPY backend/deepiri-communications-hub/package.json ./
+COPY backend/deepiri-communications-hub/package-lock.json ./
 
 RUN node -e "const fs=require('fs'),lock=JSON.parse(fs.readFileSync('package-lock.json'));delete lock.packages['../../shared/deepiri-shared-utils'];delete lock.packages['node_modules/@team-deepiri/shared-utils'];fs.writeFileSync('package-lock.json',JSON.stringify(lock));" \
  && cd /shared/deepiri-shared-utils \

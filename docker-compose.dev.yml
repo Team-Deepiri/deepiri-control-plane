@@ -1312,8 +1312,9 @@ services:
   # Frontend with Vite HMR
   frontend-dev:
     build:
-      context: .
-      dockerfile: ./deepiri-web-frontend/Dockerfile.dev
+      context: ./deepiri-web-frontend
+      dockerfile: Dockerfile
+      target: dev
     image: deepiri-dev-frontend:latest
     pull_policy: never
     container_name: deepiri-frontend-dev

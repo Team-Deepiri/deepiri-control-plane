@@ -1,9 +1,11 @@
 FROM ghcr.io/team-deepiri/deepiri-base:18-alpine
 
-COPY shared/deepiri-shared-utils/package*.json /shared/deepiri-shared-utils/
+COPY shared/deepiri-shared-utils/package.json /shared/deepiri-shared-utils/
+COPY shared/deepiri-shared-utils/package-lock.json /shared/deepiri-shared-utils/
 COPY shared/deepiri-shared-utils/tsconfig.json /shared/deepiri-shared-utils/
 COPY shared/deepiri-shared-utils/src /shared/deepiri-shared-utils/src
-COPY backend/deepiri-incentive-engine/package*.json ./
+COPY backend/deepiri-incentive-engine/package.json ./
+COPY backend/deepiri-incentive-engine/package-lock.json ./
 COPY backend/deepiri-incentive-engine/tsconfig.json ./
 COPY backend/deepiri-incentive-engine/prisma ./prisma
 
