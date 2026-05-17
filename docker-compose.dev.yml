@@ -862,8 +862,6 @@ services:
     container_name: deepiri-ollama-dev
     restart: unless-stopped
     logging: *minimal-logging
-    # runtime: nvidia and deploy.resources.reservations are in docker-compose.dev.gpu.yml
-    # Base config runs CPU-only for compatibility on all machines
     ports:
       - "${OLLAMA_PORT:-11435}:11434"
     volumes:
