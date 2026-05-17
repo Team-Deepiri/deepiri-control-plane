@@ -129,10 +129,6 @@ echo ""
 update_submodule "diri-cyrex" "diri-cyrex (Cyrex)"
 echo ""
 
-# Update diri-persola
-update_submodule "diri-persola" "diri-persola (Persola - Personalized Agentic Framework)"
-echo ""
-
 # Update deepiri-api-gateway
 update_submodule "platform-services/backend/deepiri-api-gateway" "deepiri-api-gateway (API Gateway)"
 echo ""
@@ -187,7 +183,6 @@ echo "📊 Submodule Status:"
 echo ""
 git submodule status deepiri-core-api
 git submodule status diri-cyrex
-git submodule status diri-persola
 git submodule status platform-services/backend/deepiri-api-gateway
 git submodule status deepiri-web-frontend
 git submodule status platform-services/backend/deepiri-external-bridge-service
@@ -206,7 +201,6 @@ echo ""
 echo "📋 Updated Submodules:"
 echo "  ✅ deepiri-core-api"
 echo "  ✅ diri-cyrex"
-echo "  ✅ diri-persola (Persola)"
 echo "  ✅ deepiri-api-gateway"
 echo "  ✅ deepiri-web-frontend"
 echo "  ✅ deepiri-external-bridge-service"
