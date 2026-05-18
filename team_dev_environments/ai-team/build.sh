@@ -4,22 +4,57 @@
 
 set -e
 
-cd "$(dirname "$0")/../.." || exit 1
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+cd "$REPO_ROOT" || exit 1
 
-# Force legacy builder. Docker Desktop / WSL2 on Windows hosts hits a
-# BuildKit snapshot-commit bug ("snapshot does not exist: not found")
-# that also masks real errors as generic "runc process is already dead".
-# The legacy builder is slower but reliable.
-export DOCKER_BUILDKIT=0
-export COMPOSE_DOCKER_CLI_BUILD=0
+# Enable BuildKit for better builds
+export DOCKER_BUILDKIT=1
+export COMPOSE_DOCKER_CLI_BUILD=1
+
+ensure_suite_images() {
+  local repo_root="$1"
+  local suite_dir="${DEEPIRI_SUITE_CONTEXT:-${repo_root}/deepiri-suite}"
+  echo "Ensuring deepiri-suite base images..."
+  local all_ok=true
+  for spec in "node:18-alpine:18-alpine" "node:18-slim:18-slim" "node:20-alpine:20-alpine"; do
+    local base="${spec%%:*}"
+    local tag="${spec##*:}"
+    local img="ghcr.io/team-deepiri/deepiri-suite:${tag}"
+    if docker image inspect "$img" >/dev/null 2>&1; then
+      echo "   ok $img (cached)"
+      continue
+    fi
+    echo "   Pulling $img from GHCR..."
+    if docker pull "$img" 2>/dev/null; then
+      echo "   ok $img (pulled)"
+      continue
+    fi
+    echo "   GHCR pull failed -- building locally (BASE_IMAGE=$base)"
+    if [ ! -f "${suite_dir}/Dockerfile" ]; then
+      echo "   deepiri-suite submodule not found at ${suite_dir}"
+      echo "      Run: git submodule update --init deepiri-suite"
+      all_ok=false
+      continue
+    fi
+    if docker build --build-arg "BASE_IMAGE=${base}" -t "$img" "$suite_dir"; then
+      echo "   ok $img (built locally)"
+    else
+      echo "   Failed to build $img locally"
+      all_ok=false
+    fi
+  done
+  [ "$all_ok" = false ] && return 1 || return 0
+}
+
+ensure_suite_images "$REPO_ROOT" || exit 1
 
 # AI team services
 SERVICES=(
-  postgres-auth postgres-core postgres-intelligence redis influxdb etcd minio milvus
+  postgres redis influxdb etcd minio milvus
   cyrex cyrex-interface mlflow
   # jupyter  # DISABLED: No services depend on Jupyter - it's only for manual research/experimentation
-  adaptive-experience-engine api-gateway messaging-service realtime-gateway
-  ollama synapse
+  challenge-service api-gateway messaging-service realtime-gateway
+  ollama synapse synapse-sugar-glider
   # deepiri-prismpipe  # PrismPipe - Capability-Routed API Pipeline (Coming Soon)
 )
 
@@ -33,25 +68,7 @@ echo "📥 Pulling Ollama Docker image..."
 docker pull ollama/ollama:latest || echo "⚠️  Failed to pull Ollama image, will try again during start"
 echo ""
 
-# Build services sequentially. Windows Docker Desktop / WSL2 runs out of
-# runc/BuildKit resources when 10+ npm installs run in parallel, causing
-# "runc run failed: container process is already dead" and snapshot errors.
-# Sequential builds are slower but reliable.
-failed=()
-for svc in "${SERVICES[@]}"; do
-  echo ""
-  echo "── Building $svc ──"
-  if ! docker compose -f docker-compose.dev.yml build "$svc"; then
-    echo "❌ $svc failed"
-    failed+=("$svc")
-  fi
-done
+# Build services using docker-compose.dev.yml
+docker compose -f docker-compose.dev.yml build "${SERVICES[@]}"
 
-if [ ${#failed[@]} -gt 0 ]; then
-  echo ""
-  echo "❌ Failed services: ${failed[*]}"
-  exit 1
-fi
-
-echo ""
 echo "✅ AI Team services built successfully!"
