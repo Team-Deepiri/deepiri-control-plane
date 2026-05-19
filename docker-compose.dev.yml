@@ -826,18 +826,13 @@ services:
       - deepiri-dev-network
 
   # ════════════════════════════════════════════════════════════════════════
-  # Ollama - CPU Mode (Default)
+  # Ollama
   # ════════════════════════════════════════════════════════════════════════
-  # Usage (CPU mode - works on all systems):
+  # Usage:
   #   docker compose up -d ollama
   #
-  # Usage (GPU mode - requires NVIDIA GPU):
-  #   docker compose -f docker-compose.dev.yml -f docker-compose.dev.gpu.yml up -d ollama
-  #
-  # The base configuration runs in CPU mode for maximum compatibility.
-  # For GPU support, use the docker-compose.dev.gpu.yml override file.
-  #
-  # GPU Setup (one-time, if you have NVIDIA GPU):
+  # The ollama image auto-detects GPU at runtime if the host has one.
+  # For GPU acceleration (one-time host setup, if you have NVIDIA GPU):
   #   sudo nvidia-ctk runtime configure --runtime=docker --set-as-default
   #   sudo systemctl restart docker
   # ════════════════════════════════════════════════════════════════════════
@@ -862,8 +857,6 @@ services:
     container_name: deepiri-ollama-dev
     restart: unless-stopped
     logging: *minimal-logging
-    # runtime: nvidia and deploy.resources.reservations are in docker-compose.dev.gpu.yml
-    # Base config runs CPU-only for compatibility on all machines
     ports:
       - "${OLLAMA_PORT:-11435}:11434"
     volumes:
