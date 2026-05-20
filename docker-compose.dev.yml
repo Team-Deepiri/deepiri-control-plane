@@ -315,6 +315,8 @@ services:
       - deepiri-dev-network
 
   # API Gateway - Routes requests to all microservices
+  # Legacy backend monolith is retired from team workflows;
+  # api-gateway is the backend entrypoint for local dev.
   api-gateway:
     build:
       context: ./platform-services

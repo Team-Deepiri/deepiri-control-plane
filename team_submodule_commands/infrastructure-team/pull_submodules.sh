@@ -106,6 +106,16 @@ check_submodule() {
     return 0
 }
 
+# Helper function to clean up invalid submodule directory
+cleanup_invalid_submodule() {
+    local submodule_path="$1"
+    if [ -d "$submodule_path" ] && ! check_submodule "$submodule_path"; then
+        echo "    ⚠️  Directory exists but is not a valid submodule. Cleaning up..."
+        rm -rf "$submodule_path"
+        echo "    ✅ Cleaned up invalid directory"
+    fi
+}
+
 # deepiri-api-gateway
 echo "  📦 deepiri-api-gateway (API Gateway)..."
 git submodule update --init --recursive platform-services/backend/deepiri-api-gateway 2>&1 || true
