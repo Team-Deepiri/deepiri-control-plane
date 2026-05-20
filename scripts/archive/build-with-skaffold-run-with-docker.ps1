@@ -131,7 +131,7 @@ $taggedCount = 0
 foreach ($mapping in $tagMappings) {
     $source = $mapping.Source
     $target = $mapping.Target
-    
+
     # Check if source image exists
     $imageExists = docker images --format "{{.Repository}}:{{.Tag}}" | Select-String -Pattern "^$source$"
     if ($imageExists) {
