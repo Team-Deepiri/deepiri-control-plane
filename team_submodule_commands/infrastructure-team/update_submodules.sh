@@ -129,15 +129,10 @@ echo ""
 update_submodule "platform-services/shared/deepiri-sugar-glider" "deepiri-sugar-glider (Synapse stream bridge)"
 echo ""
 
-# Update diri-persola
-update_submodule "diri-persola" "diri-persola (Persola - Personalized Agentic Framework)"
-echo ""
-
 # Also update via git submodule update --remote for consistency
 echo "🔄 Syncing submodule references..."
 git submodule update --remote deepiri-core-api 2>/dev/null || true
 git submodule update --remote diri-cyrex 2>/dev/null || true
-git submodule update --remote diri-persola 2>/dev/null || true
 git submodule update --remote platform-services/backend/deepiri-api-gateway 2>/dev/null || true
 git submodule update --remote platform-services/backend/deepiri-auth-service 2>/dev/null || true
 git submodule update --remote platform-services/backend/deepiri-external-bridge-service 2>/dev/null || true
@@ -152,7 +147,6 @@ echo "📊 Submodule Status:"
 echo ""
 git submodule status deepiri-core-api
 git submodule status diri-cyrex
-git submodule status diri-persola
 git submodule status platform-services/backend/deepiri-api-gateway
 git submodule status platform-services/backend/deepiri-auth-service
 git submodule status platform-services/backend/deepiri-external-bridge-service
@@ -167,7 +161,6 @@ echo ""
 echo "📋 Updated Submodules:"
 echo "  ✅ deepiri-core-api"
 echo "  ✅ diri-cyrex"
-echo "  ✅ diri-persola (Persola)"
 echo "  ✅ deepiri-api-gateway"
 echo "  ✅ deepiri-auth-service"
 echo "  ✅ deepiri-external-bridge-service"
