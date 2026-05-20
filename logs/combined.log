@@ -23,6 +23,7 @@
   timestamp: '2025-09-26 01:20:19'
 }
 {
+  message: 'Connected to MongoDB',
   level: 'info',
   service: 'mag-2.0',
   timestamp: '2025-09-26 01:20:19'
