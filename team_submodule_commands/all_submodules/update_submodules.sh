@@ -121,16 +121,10 @@ echo ""
 echo "🔄 Updating all submodules..."
 echo ""
 
-# Update deepiri-core-api
-update_submodule "deepiri-core-api" "deepiri-core-api (Core API)"
 echo ""
 
 # Update diri-cyrex
 update_submodule "diri-cyrex" "diri-cyrex (Cyrex)"
-echo ""
-
-# Update diri-persola
-update_submodule "diri-persola" "diri-persola (Persola - Personalized Agentic Framework)"
 echo ""
 
 # Update deepiri-api-gateway
@@ -165,6 +159,18 @@ echo ""
 update_submodule "platform-services/shared/deepiri-prismpipe" "deepiri-prismpipe (PrismPipe - Capability-Routed API Pipeline)"
 echo ""
 
+# Update deepiri-shared-utils
+update_submodule "platform-services/shared/deepiri-shared-utils" "deepiri-shared-utils (Shared Utilities)"
+echo ""
+
+# Update deepiri-synapse
+update_submodule "platform-services/shared/deepiri-synapse" "deepiri-synapse (Matrix server)"
+echo ""
+
+# Update deepiri-sugar-glider
+update_submodule "platform-services/shared/deepiri-sugar-glider" "deepiri-sugar-glider (Synapse stream bridge)"
+echo ""
+
 # Note: We don't use 'git submodule update --remote' here because it would
 # update to the remote branch's HEAD, potentially changing the branch.
 # Instead, we preserve each submodule's current branch and merge updates.
@@ -173,9 +179,7 @@ echo ""
 # Show status
 echo "📊 Submodule Status:"
 echo ""
-git submodule status deepiri-core-api
 git submodule status diri-cyrex
-git submodule status diri-persola
 git submodule status platform-services/backend/deepiri-api-gateway
 git submodule status deepiri-web-frontend
 git submodule status platform-services/backend/deepiri-external-bridge-service
@@ -184,14 +188,15 @@ git submodule status diri-helox
 git submodule status deepiri-modelkit
 git submodule status platform-services/backend/deepiri-language-intelligence-service
 git submodule status platform-services/shared/deepiri-prismpipe
+git submodule status platform-services/shared/deepiri-shared-utils
+git submodule status platform-services/shared/deepiri-synapse
+git submodule status platform-services/shared/deepiri-sugar-glider
 echo ""
 
 echo "✅ All submodules updated!"
 echo ""
 echo "📋 Updated Submodules:"
-echo "  ✅ deepiri-core-api"
 echo "  ✅ diri-cyrex"
-echo "  ✅ diri-persola (Persola)"
 echo "  ✅ deepiri-api-gateway"
 echo "  ✅ deepiri-web-frontend"
 echo "  ✅ deepiri-external-bridge-service"
@@ -200,5 +205,7 @@ echo "  ✅ diri-helox"
 echo "  ✅ deepiri-modelkit"
 echo "  ✅ deepiri-language-intelligence-service"
 echo "  ✅ deepiri-prismpipe (PrismPipe)"
+echo "  ✅ deepiri-shared-utils"
+echo "  ✅ deepiri-synapse"
+echo "  ✅ deepiri-sugar-glider"
 echo ""
-

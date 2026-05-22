@@ -66,6 +66,12 @@ fi
 if [ ! -d "platform-services/shared/deepiri-prismpipe/.git" ]; then
     echo "    ⚠️  WARNING: deepiri-prismpipe not found at expected location"
 fi
+if [ ! -d "platform-services/shared/deepiri-synapse/.git" ]; then
+    echo "    ⚠️  WARNING: deepiri-synapse not found at expected location"
+fi
+if [ ! -d "platform-services/shared/deepiri-sugar-glider/.git" ]; then
+    echo "    ⚠️  WARNING: deepiri-sugar-glider not found at expected location"
+fi
 echo "    ✅ Verification complete"
 echo ""
 
@@ -90,6 +96,13 @@ echo "  - Check status: git submodule status"
 echo "  - Update all: git submodule update --init --recursive"
 echo "  - Sync all: git submodule sync --recursive"
 echo "  - Work in PrismPipe: cd platform-services/shared/deepiri-prismpipe"
+echo "  - Work in Synapse: cd platform-services/shared/deepiri-synapse"
+echo "  - Work in Sugar Glider: cd platform-services/shared/deepiri-sugar-glider"
+echo ""
+
+# deepiri-suite (base images for Docker builds)
+echo "🔄 Initializing deepiri-suite submodule..."
+git submodule update --init deepiri-suite 2>&1 && echo "   ✅ deepiri-suite ready" || echo "   ⚠️  deepiri-suite init failed — local Docker image builds may fall back to GHCR"
 echo ""
 
 # Automatically run setup-hooks.sh after pulling submodules

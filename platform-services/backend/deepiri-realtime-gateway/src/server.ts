@@ -7,24 +7,186 @@ import dotenv from 'dotenv';
 import { secureLog } from '@team-deepiri/shared-utils';
 import { setupGamificationEvents, GamificationEventEmitter } from './gamificationEvents';
 import { validateBodyIfPresent } from './middleware/inputValidation';
-import {
-  handleEmitToChannel,
-  handleGetRooms,
-  handleGetPresence,
-  handleGetMetrics,
-  realtimeGateway
-} from './core/realtimeGateway';
 
 dotenv.config();
 
 const app: Express = express();
 const httpServer = createServer(app);
-const io = new Server(httpServer, {
-  cors: { origin: '*' }
-});
+const ALLOWED_SOCKET_TRANSPORTS = new Set(['polling', 'websocket']);
+const ALLOWED_SOCKET_PARSERS = new Set(['default', 'msgpack']);
 
-// Attach io to app for core module access
-app.set('io', io);
+type NativeAddonStatus = {
+  installed: boolean;
+  active: boolean;
+  reason: 'active' | 'disabled_by_env' | 'not_installed';
+};
+
+type SocketParserStatus = {
+  requested: 'default' | 'msgpack';
+  active: 'default' | 'msgpack';
+  installed: boolean;
+  reason: 'default' | 'active' | 'not_installed' | 'invalid' | 'load_failed';
+  package?: string;
+  error?: string;
+};
+
+function isAddonDisabledByEnv(envName: string): boolean {
+  const raw = (process.env[envName] || '').trim().toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'yes';
+}
+
+function parseBoolean(value: string | undefined, fallback: boolean): boolean {
+  if (value === undefined) {
+    return fallback;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) {
+    return true;
+  }
+  if (['0', 'false', 'no', 'off'].includes(normalized)) {
+    return false;
+  }
+
+  return fallback;
+}
+
+function detectNativeAddon(moduleName: string, disableEnvName: string): NativeAddonStatus {
+  const disabledByEnv = isAddonDisabledByEnv(disableEnvName);
+  let installed = false;
+
+  try {
+    require.resolve(moduleName);
+    installed = true;
+  } catch {
+    installed = false;
+  }
+
+  if (disabledByEnv) {
+    return {
+      installed,
+      active: false,
+      reason: 'disabled_by_env',
+    };
+  }
+
+  if (!installed) {
+    return {
+      installed: false,
+      active: false,
+      reason: 'not_installed',
+    };
+  }
+
+  return {
+    installed: true,
+    active: true,
+    reason: 'active',
+  };
+}
+
+const bufferutilStatus = detectNativeAddon('bufferutil', 'WS_NO_BUFFER_UTIL');
+const utf8ValidateStatus = detectNativeAddon('utf-8-validate', 'WS_NO_UTF_8_VALIDATE');
+
+function parseSocketTransports(raw: string | undefined): ('polling' | 'websocket')[] {
+  if (!raw || !raw.trim()) {
+    return ['polling', 'websocket'];
+  }
+  const parsed = raw
+    .split(',')
+    .map((value) => value.trim().toLowerCase())
+    .filter((value): value is 'polling' | 'websocket' => ALLOWED_SOCKET_TRANSPORTS.has(value));
+  return parsed.length ? [...new Set(parsed)] : ['polling', 'websocket'];
+}
+
+function parseSocketParser(raw: string | undefined): { requested: 'default' | 'msgpack'; invalid: boolean } {
+  const normalized = (raw || 'default').trim().toLowerCase();
+  if (ALLOWED_SOCKET_PARSERS.has(normalized)) {
+    return { requested: normalized as 'default' | 'msgpack', invalid: false };
+  }
+  return { requested: 'default', invalid: true };
+}
+
+function resolveSocketParser(): { parser?: unknown; status: SocketParserStatus } {
+  const parsed = parseSocketParser(process.env.SOCKET_IO_PARSER);
+  if (parsed.invalid) {
+    return {
+      status: {
+        requested: 'default',
+        active: 'default',
+        installed: false,
+        reason: 'invalid',
+      },
+    };
+  }
+
+  if (parsed.requested === 'default') {
+    return {
+      status: {
+        requested: 'default',
+        active: 'default',
+        installed: true,
+        reason: 'default',
+      },
+    };
+  }
+
+  const packageName = 'socket.io-msgpack-parser';
+  try {
+    require.resolve(packageName);
+  } catch {
+    return {
+      status: {
+        requested: 'msgpack',
+        active: 'default',
+        installed: false,
+        reason: 'not_installed',
+        package: packageName,
+      },
+    };
+  }
+
+  try {
+    const loadedParser = require(packageName);
+    return {
+      parser: loadedParser?.default || loadedParser,
+      status: {
+        requested: 'msgpack',
+        active: 'msgpack',
+        installed: true,
+        reason: 'active',
+        package: packageName,
+      },
+    };
+  } catch (error) {
+    return {
+      status: {
+        requested: 'msgpack',
+        active: 'default',
+        installed: true,
+        reason: 'load_failed',
+        package: packageName,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    };
+  }
+}
+
+const socketTransports = parseSocketTransports(process.env.SOCKET_IO_TRANSPORTS);
+const socketParser = resolveSocketParser();
+const discardInitialRequest = parseBoolean(process.env.SOCKET_IO_DISCARD_INITIAL_REQUEST, false);
+const socketServerOptions = {
+  cors: { origin: '*' },
+  transports: socketTransports,
+  ...(socketParser.parser ? { parser: socketParser.parser } : {}),
+};
+const io = new Server(httpServer, socketServerOptions as any);
+
+if (discardInitialRequest) {
+  io.engine.on('connection', (rawSocket) => {
+    (rawSocket as { request?: unknown }).request = undefined;
+  });
+}
 
 const PORT: number = parseInt(process.env.PORT || '5008', 10);
 
@@ -33,13 +195,20 @@ app.use(helmet());
 app.use(express.json({ limit: '100kb' }));
 app.use(validateBodyIfPresent());
 
+// Setup gamification events
 const gamificationEmitter = setupGamificationEvents(io);
 
-import { startEventConsumption } from './streaming/eventConsumer';
+// Start event consumption for streaming events
+import {
+  getRuntimeBreakthroughSnapshot,
+  getSocketHotPathProfileSnapshot,
+  startEventConsumption,
+} from './streaming/eventConsumer';
 startEventConsumption(io).catch((err) => {
   secureLog('error', 'Failed to start event consumption:', err);
 });
 
+// HTTP endpoint to emit gamification events (called by engagement service)
 app.post('/emit/gamification', (req: Request, res: Response) => {
   const { userId, type, data } = req.body;
   
@@ -47,6 +216,7 @@ app.post('/emit/gamification', (req: Request, res: Response) => {
     return res.status(400).json({ error: 'userId and type are required' });
   }
 
+  // Emit based on type
   switch (type) {
     case 'momentum_awarded':
       gamificationEmitter.emitMomentumAwarded(userId, data.amount, data.source, data.newTotal, data.currentLevel);
@@ -76,11 +246,11 @@ app.post('/emit/gamification', (req: Request, res: Response) => {
   res.json({ success: true });
 });
 
+// Export emitter for use by other services
 export { gamificationEmitter };
 
 io.on('connection', (socket) => {
   secureLog('info', `WebSocket client connected: ${socket.id}`);
-  realtimeGateway.handleConnection(socket);
   
   socket.emit('connection_confirmed', {
     socketId: socket.id,
@@ -88,24 +258,8 @@ io.on('connection', (socket) => {
   });
   
   socket.on('join_user_room', (userId: string) => {
-    realtimeGateway.joinRoom(socket, userId, 'user');
-  });
-  
-  socket.on('join_user_room_legacy', (userId: string) => {
     socket.join(`user_${userId}`);
-    secureLog('info', `User ${userId} joined room (legacy)`);
-  });
-  
-  socket.on('join_party_room', (partyId: string) => {
-    realtimeGateway.joinRoom(socket, partyId, 'party');
-  });
-  
-  socket.on('join_org_room', (orgId: string) => {
-    realtimeGateway.joinRoom(socket, orgId, 'org');
-  });
-  
-  socket.on('join_global_room', () => {
-    realtimeGateway.joinRoom(socket, 'global', 'global');
+    secureLog('info', `User ${userId} joined room`);
   });
   
   socket.on('join_adventure_room', (adventureId: string) => {
@@ -113,72 +267,58 @@ io.on('connection', (socket) => {
     secureLog('info', `User joined adventure room: ${adventureId}`);
   });
   
-  socket.on('set_presence', (data: { userId: string; status: 'online' | 'away' | 'offline' }) => {
-    realtimeGateway.broadcastPresence(socket, data.userId, data.status);
-  });
-  
   socket.on('disconnect', (reason: string) => {
     secureLog('info', `WebSocket client disconnected: ${socket.id}, reason: ${reason}`);
-    realtimeGateway.handleDisconnect(socket);
   });
 });
 
 app.get('/health', (req: Request, res: Response) => {
+  const hotPathProfile = getSocketHotPathProfileSnapshot();
   res.json({ 
     status: 'healthy', 
-    service: 'deepiri-realtime-gateway',
-    capabilities: [
-      'socket.io',
-      'multi-channel-rooms',
-      'presence-tracking',
-      'event-fanout',
-      'idempotent-delivery',
-      'rate-limiting',
-      'durable-stream-replay',
-      'backpressure-monitoring',
-      'gateway-observability'
-    ],
+    service: 'realtime-gateway',
     connections: io.sockets.sockets.size,
-    timestamp: new Date().toISOString() 
+    timestamp: new Date().toISOString(),
+    socket_io: {
+      transports: socketTransports,
+      native_addons: {
+        bufferutil: bufferutilStatus,
+        utf8_validate: utf8ValidateStatus,
+      },
+      parser: socketParser.status,
+      discard_initial_request: discardInitialRequest,
+    },
+    streaming: {
+      runtime_breakthroughs: getRuntimeBreakthroughSnapshot(),
+      socket_hotpath_profile: {
+        enabled: hotPathProfile.enabled,
+        track_all_buckets: hotPathProfile.track_all_buckets,
+        bucket_targets: hotPathProfile.bucket_targets,
+        sample_limit: hotPathProfile.sample_limit,
+        bucket_count: hotPathProfile.bucket_count,
+        total_events_tracked: hotPathProfile.total_events_tracked,
+      },
+    },
   });
 });
 
-// Realtime Gateway API
-app.post('/emit/channel', handleEmitToChannel);
-app.get('/rooms', handleGetRooms);
-app.get('/presence', handleGetPresence);
-app.get('/metrics', handleGetMetrics);
-
-app.get('/capabilities', (req: Request, res: Response) => {
-  res.json({
-    service: 'deepiri-realtime-gateway',
-    version: '2.0.0',
-    capabilities: {
-      websocket: {
-        description: 'Socket.IO real-time communication',
-        events: ['connection', 'join_user_room', 'join_party_room', 'join_org_room', 'join_global_room']
-      },
-      fanout: {
-        description: 'Multi-channel event distribution',
-        endpoints: ['POST /emit/channel', 'POST /emit/gamification']
-      },
-      presence: {
-        description: 'Online status tracking',
-        endpoints: ['GET /presence', 'socket.set_presence']
-      },
-      observability: {
-        description: 'Gateway metrics',
-        endpoints: ['GET /metrics']
-      }
-    }
-  });
+app.get('/v1/streaming/profile', (req: Request, res: Response) => {
+  res.json(getSocketHotPathProfileSnapshot());
 });
 
 httpServer.listen(PORT, () => {
   secureLog('info', `Realtime Gateway running on port ${PORT}`);
   secureLog('info', `Gamification events enabled`);
-  secureLog('info', `Multi-channel rooms enabled`);
-  secureLog('info', `Presence tracking enabled`);
+  secureLog('info', `Socket.IO transports: ${socketTransports.join(',')}`);
+  secureLog(
+    'info',
+    `Socket.IO parser: requested=${socketParser.status.requested}, active=${socketParser.status.active}, reason=${socketParser.status.reason}`
+  );
+  secureLog('info', `Socket.IO discard initial request: ${discardInitialRequest}`);
+  secureLog(
+    'info',
+    `Socket.IO native addons: bufferutil(installed=${bufferutilStatus.installed},active=${bufferutilStatus.active},reason=${bufferutilStatus.reason}), utf-8-validate(installed=${utf8ValidateStatus.installed},active=${utf8ValidateStatus.active},reason=${utf8ValidateStatus.reason})`
+  );
 });
 
 export { app, io };

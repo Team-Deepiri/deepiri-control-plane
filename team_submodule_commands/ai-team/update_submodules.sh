@@ -97,10 +97,6 @@ echo ""
 update_submodule "diri-cyrex" "diri-cyrex (AI/ML Service)"
 echo ""
 
-# Update diri-persola
-update_submodule "diri-persola" "diri-persola (Persola - Personalized Agentic Framework)"
-echo ""
-
 # Update deepiri-api-gateway
 update_submodule "platform-services/backend/deepiri-api-gateway" "deepiri-api-gateway (API Gateway)"
 echo ""
@@ -113,32 +109,42 @@ echo ""
 update_submodule "platform-services/shared/deepiri-prismpipe" "deepiri-prismpipe (PrismPipe - Capability-Routed API Pipeline)"
 echo ""
 
+# Update deepiri-synapse
+update_submodule "platform-services/shared/deepiri-synapse" "deepiri-synapse (Matrix server)"
+echo ""
+
+# Update deepiri-sugar-glider
+update_submodule "platform-services/shared/deepiri-sugar-glider" "deepiri-sugar-glider (Synapse stream bridge)"
+echo ""
+
 # Also update via git submodule update --remote for consistency
 echo "🔄 Syncing submodule references..."
 git submodule update --remote diri-cyrex 2>/dev/null || true
-git submodule update --remote diri-persola 2>/dev/null || true
 git submodule update --remote platform-services/backend/deepiri-api-gateway 2>/dev/null || true
 git submodule update --remote deepiri-modelkit 2>/dev/null || true
 git submodule update --remote platform-services/shared/deepiri-prismpipe 2>/dev/null || true
+git submodule update --remote platform-services/shared/deepiri-synapse 2>/dev/null || true
+git submodule update --remote platform-services/shared/deepiri-sugar-glider 2>/dev/null || true
 echo ""
 
 # Show status
 echo "📊 Submodule Status:"
 echo ""
 git submodule status diri-cyrex
-git submodule status diri-persola
 git submodule status platform-services/backend/deepiri-api-gateway
 git submodule status deepiri-modelkit 2>/dev/null || echo "  ⚠️  deepiri-modelkit (not initialized)"
 git submodule status platform-services/shared/deepiri-prismpipe 2>/dev/null || echo "  ⚠️  deepiri-prismpipe (not initialized)"
+git submodule status platform-services/shared/deepiri-synapse 2>/dev/null || echo "  ⚠️  deepiri-synapse (not initialized)"
+git submodule status platform-services/shared/deepiri-sugar-glider 2>/dev/null || echo "  ⚠️  deepiri-sugar-glider (not initialized)"
 echo ""
 
 echo "✅ AI Team submodules updated!"
 echo ""
 echo "📋 Updated Submodules:"
 echo "  ✅ diri-cyrex"
-echo "  ✅ diri-persola (Persola)"
 echo "  ✅ deepiri-api-gateway"
 echo "  ✅ deepiri-modelkit"
 echo "  ✅ deepiri-prismpipe (PrismPipe)"
+echo "  ✅ deepiri-synapse"
+echo "  ✅ deepiri-sugar-glider"
 echo ""
-
