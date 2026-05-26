@@ -862,7 +862,8 @@ services:
     ports:
       - "${OLLAMA_PORT:-11435}:11434"
     volumes:
-      - ollama_dev_data:/root/.ollama
+    - ollama_dev_data:/root/.ollama
+    - ./deepiri-ollama-utils:/opt/deepiri-ollama-utils
     environment:
       OLLAMA_HOST: 0.0.0.0
       OLLAMA_KEEP_ALIVE: "24h"
