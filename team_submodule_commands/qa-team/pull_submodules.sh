@@ -26,6 +26,7 @@ declare -a SUBMODULES=(
   "platform-services/backend/deepiri-language-intelligence-service"
   "deepiri-web-frontend"
   "deepiri-suite"
+  "deepiri-ollama-utils"
 )
 
 FAILED=()
@@ -98,10 +99,6 @@ if [ ${#FAILED[@]} -gt 0 ]; then
   exit 1
 fi
 
-# deepiri-ollama-utils - Shared Ollama runtime and CLI utilities
-echo "  📦 deepiri-ollama-utils (Shared Ollama Utilities)..."
-git submodule update --init --recursive deepiri-ollama-utils
-echo "    ✅ deepiri-ollama-utils initialized"
 
 git submodule update --remote deepiri-ollama-utils
 git submodule status deepiri-ollama-utils

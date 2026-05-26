@@ -41,7 +41,7 @@
 	branch = dev
 [submodule "deepiri-ollama-utils"]
 	path = deepiri-ollama-utils
-	url = https://github.com/Team-Deepiri/deepiri-ollama-utils.git
+	url = git@github.com:Team-Deepiri/deepiri-ollama-utils.git
 [submodule "deepiri-suite"]
 	path = deepiri-suite
 	url = git@github.com:Team-Deepiri/deepiri-suite.git
