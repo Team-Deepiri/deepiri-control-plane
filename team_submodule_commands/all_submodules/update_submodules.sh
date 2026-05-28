@@ -121,13 +121,17 @@ echo ""
 echo "🔄 Updating all submodules..."
 echo ""
 
-# Update deepiri-core-api
-update_submodule "deepiri-core-api" "deepiri-core-api (Core API)"
 echo ""
 
 # Update diri-cyrex
 update_submodule "diri-cyrex" "diri-cyrex (Cyrex)"
 echo ""
+
+# Update deepiri-ollama-utils
+update_submodule "deepiri-ollama-utils" "deepiri-ollama-utils (Shared Ollama Utilities)"
+git submodule update --remote deepiri-ollama-utils 2>/dev/null || true
+git submodule status deepiri-ollama-utils
+echo "  ✅ deepiri-ollama-utils (Ollama Utils)"
 
 # Update deepiri-api-gateway
 update_submodule "platform-services/backend/deepiri-api-gateway" "deepiri-api-gateway (API Gateway)"
@@ -181,7 +185,6 @@ echo ""
 # Show status
 echo "📊 Submodule Status:"
 echo ""
-git submodule status deepiri-core-api
 git submodule status diri-cyrex
 git submodule status platform-services/backend/deepiri-api-gateway
 git submodule status deepiri-web-frontend
@@ -199,7 +202,6 @@ echo ""
 echo "✅ All submodules updated!"
 echo ""
 echo "📋 Updated Submodules:"
-echo "  ✅ deepiri-core-api"
 echo "  ✅ diri-cyrex"
 echo "  ✅ deepiri-api-gateway"
 echo "  ✅ deepiri-web-frontend"
