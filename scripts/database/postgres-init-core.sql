@@ -73,6 +73,7 @@ CREATE TABLE IF NOT EXISTS public.seasons (
 CREATE INDEX IF NOT EXISTS idx_seasons_is_active ON public.seasons(is_active);
 CREATE INDEX IF NOT EXISTS idx_seasons_dates ON public.seasons(start_date, end_date);
 
+DROP TRIGGER IF EXISTS update_seasons_updated_at ON public.seasons;
 CREATE TRIGGER update_seasons_updated_at BEFORE UPDATE ON public.seasons 
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
@@ -98,8 +99,10 @@ CREATE INDEX IF NOT EXISTS idx_projects_status ON public.projects(status);
 CREATE INDEX IF NOT EXISTS idx_projects_priority ON public.projects(priority);
 CREATE INDEX IF NOT EXISTS idx_projects_metadata ON public.projects USING GIN (metadata);
 
+DROP TRIGGER IF EXISTS update_projects_updated_at ON public.projects;
 CREATE TRIGGER update_projects_updated_at BEFORE UPDATE ON public.projects 
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+DROP TRIGGER IF EXISTS projects_audit_log ON public.projects;
 CREATE TRIGGER projects_audit_log AFTER INSERT OR UPDATE OR DELETE ON public.projects
     FOR EACH ROW EXECUTE FUNCTION create_audit_log();
 
@@ -121,6 +124,7 @@ CREATE TABLE IF NOT EXISTS public.project_milestones (
 CREATE INDEX IF NOT EXISTS idx_project_milestones_project_id ON public.project_milestones(project_id);
 CREATE INDEX IF NOT EXISTS idx_project_milestones_completed ON public.project_milestones(completed);
 
+DROP TRIGGER IF EXISTS update_project_milestones_updated_at ON public.project_milestones;
 CREATE TRIGGER update_project_milestones_updated_at BEFORE UPDATE ON public.project_milestones 
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
@@ -152,8 +156,10 @@ CREATE INDEX IF NOT EXISTS idx_quests_season_id ON public.quests(season_id);
 CREATE INDEX IF NOT EXISTS idx_quests_status ON public.quests(status);
 CREATE INDEX IF NOT EXISTS idx_quests_metadata ON public.quests USING GIN (metadata);
 
+DROP TRIGGER IF EXISTS update_quests_updated_at ON public.quests;
 CREATE TRIGGER update_quests_updated_at BEFORE UPDATE ON public.quests 
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+DROP TRIGGER IF EXISTS quests_audit_log ON public.quests;
 CREATE TRIGGER quests_audit_log AFTER INSERT OR UPDATE OR DELETE ON public.quests
     FOR EACH ROW EXECUTE FUNCTION create_audit_log();
 
@@ -195,8 +201,10 @@ CREATE INDEX IF NOT EXISTS idx_tasks_ai_suggestions ON public.tasks USING GIN (a
 CREATE INDEX IF NOT EXISTS idx_tasks_metadata ON public.tasks USING GIN (metadata);
 CREATE INDEX IF NOT EXISTS idx_tasks_title_search ON public.tasks USING GIN (to_tsvector('english', title));
 
+DROP TRIGGER IF EXISTS update_tasks_updated_at ON public.tasks;
 CREATE TRIGGER update_tasks_updated_at BEFORE UPDATE ON public.tasks 
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+DROP TRIGGER IF EXISTS tasks_audit_log ON public.tasks;
 CREATE TRIGGER tasks_audit_log AFTER INSERT OR UPDATE OR DELETE ON public.tasks
     FOR EACH ROW EXECUTE FUNCTION create_audit_log();
 
@@ -217,6 +225,7 @@ CREATE INDEX IF NOT EXISTS idx_subtasks_task_id ON public.subtasks(task_id);
 CREATE INDEX IF NOT EXISTS idx_subtasks_completed ON public.subtasks(completed);
 CREATE INDEX IF NOT EXISTS idx_subtasks_sort_order ON public.subtasks(task_id, sort_order);
 
+DROP TRIGGER IF EXISTS update_subtasks_updated_at ON public.subtasks;
 CREATE TRIGGER update_subtasks_updated_at BEFORE UPDATE ON public.subtasks 
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
@@ -272,6 +281,7 @@ CREATE INDEX IF NOT EXISTS idx_season_boosts_season_id ON public.season_boosts(s
 CREATE INDEX IF NOT EXISTS idx_season_boosts_boost_type ON public.season_boosts(boost_type);
 CREATE INDEX IF NOT EXISTS idx_season_boosts_is_active ON public.season_boosts(is_active);
 
+DROP TRIGGER IF EXISTS update_season_boosts_updated_at ON public.season_boosts;
 CREATE TRIGGER update_season_boosts_updated_at BEFORE UPDATE ON public.season_boosts 
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
@@ -293,6 +303,7 @@ CREATE INDEX IF NOT EXISTS idx_quest_milestones_quest_id ON public.quest_milesto
 CREATE INDEX IF NOT EXISTS idx_quest_milestones_completed ON public.quest_milestones(completed);
 CREATE INDEX IF NOT EXISTS idx_quest_milestones_sort_order ON public.quest_milestones(quest_id, sort_order);
 
+DROP TRIGGER IF EXISTS update_quest_milestones_updated_at ON public.quest_milestones;
 CREATE TRIGGER update_quest_milestones_updated_at BEFORE UPDATE ON public.quest_milestones 
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
@@ -318,6 +329,7 @@ CREATE INDEX IF NOT EXISTS idx_rewards_status ON public.rewards(status);
 CREATE INDEX IF NOT EXISTS idx_rewards_expires_at ON public.rewards(expires_at);
 CREATE INDEX IF NOT EXISTS idx_rewards_reward_type ON public.rewards(reward_type);
 
+DROP TRIGGER IF EXISTS update_rewards_updated_at ON public.rewards;
 CREATE TRIGGER update_rewards_updated_at BEFORE UPDATE ON public.rewards 
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
@@ -356,6 +368,7 @@ CREATE INDEX IF NOT EXISTS idx_momentum_user_id ON analytics.momentum(user_id);
 CREATE INDEX IF NOT EXISTS idx_momentum_total_momentum ON analytics.momentum(total_momentum DESC);
 CREATE INDEX IF NOT EXISTS idx_momentum_current_level ON analytics.momentum(current_level DESC);
 
+DROP TRIGGER IF EXISTS update_momentum_updated_at ON analytics.momentum;
 CREATE TRIGGER update_momentum_updated_at BEFORE UPDATE ON analytics.momentum 
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
@@ -434,6 +447,7 @@ CREATE TABLE IF NOT EXISTS analytics.streaks (
 CREATE INDEX IF NOT EXISTS idx_streaks_user_id ON analytics.streaks(user_id);
 CREATE INDEX IF NOT EXISTS idx_streaks_daily_current ON analytics.streaks(daily_current DESC);
 
+DROP TRIGGER IF EXISTS update_streaks_updated_at ON analytics.streaks;
 CREATE TRIGGER update_streaks_updated_at BEFORE UPDATE ON analytics.streaks 
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
@@ -469,6 +483,7 @@ CREATE TABLE IF NOT EXISTS analytics.boosts (
 
 CREATE INDEX IF NOT EXISTS idx_boosts_user_id ON analytics.boosts(user_id);
 
+DROP TRIGGER IF EXISTS update_boosts_updated_at ON analytics.boosts;
 CREATE TRIGGER update_boosts_updated_at BEFORE UPDATE ON analytics.boosts 
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
@@ -563,6 +578,7 @@ CREATE TABLE IF NOT EXISTS audit.user_activity_summary (
 CREATE INDEX IF NOT EXISTS idx_user_activity_summary_user_id ON audit.user_activity_summary(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_activity_summary_last_active ON audit.user_activity_summary(last_active_at DESC);
 
+DROP TRIGGER IF EXISTS update_user_activity_summary_updated_at ON audit.user_activity_summary;
 CREATE TRIGGER update_user_activity_summary_updated_at BEFORE UPDATE ON audit.user_activity_summary 
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
