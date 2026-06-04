@@ -7,13 +7,12 @@ Starts ONLY the services needed by the frontend:
   - frontend-dev: React frontend application
   - api-gateway: Routes REST API calls from frontend
   - realtime-gateway: WebSocket for real-time features
-  - auth-service, task-orchestrator, engagement-service, platform-analytics-service,
-    notification-service, challenge-service: Dependencies of api-gateway
+  - auth-service, workflow-orchestrator, incentive-engine, decision-intelligence,
+    communications-hub, adaptive-experience-engine: Dependencies of api-gateway
   - Infrastructure: postgres, redis, influxdb, pgadmin, adminer
 
 Services NOT started (not needed by frontend):
   - external-bridge-service (only needed for integrations)
-  - core-api / deepiri-core-api (deprecated legacy monolith, replaced by microservices)
   - cyrex, jupyter, mlflow (AI/ML services, not needed by frontend)
 """
 

@@ -72,7 +72,8 @@ ENV/
 dist/
 build/
 *.egg
-
+.opencode
+vizult-output/
 # Development virtual environment (one level above deepiri)
 ../.dev_venv/
 
@@ -123,12 +124,17 @@ Thumbs.db
 .vscode/
 .idea/
 *.iml
+.claude/
+
+# ========================================
+# DOCS
+# ========================================
+platform-services/DOCKER_BUILD_FIXES.md
 
 # ========================================
 # MISC
 # ========================================
 .husky
-.github
 .dockerignore
 .docker-dependency-cache.json
 *.cache

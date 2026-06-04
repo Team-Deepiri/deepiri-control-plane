@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+# QA Team - pull/init submodules needed for docker-compose.dev.yml (synapse, frontend, etc.)
 
 echo "🧪 QA Team - Initializing Specific Submodules"
 echo "============================================="
@@ -14,52 +14,91 @@ if [ ! -d "$REPO_ROOT/.git" ]; then
 fi
 cd "$REPO_ROOT"
 
-# List of submodules you need:
+# Synapse/sugar-glider first — frontend-dev depends on synapse; a bad frontend pin must not block these.
 declare -a SUBMODULES=(
+  "platform-services/shared/deepiri-synapse"
+  "platform-services/shared/deepiri-sugar-glider"
+  "platform-services/shared/deepiri-shared-utils"
+  "platform-services/shared/deepiri-prismpipe"
   "platform-services/backend/deepiri-auth-service"
   "platform-services/backend/deepiri-external-bridge-service"
   "platform-services/backend/deepiri-api-gateway"
   "platform-services/backend/deepiri-language-intelligence-service"
-  "deepiri-core-api"
   "deepiri-web-frontend"
-  "platform-services/shared/deepiri-prismpipe"
+  "deepiri-suite"
+  "deepiri-ollama-utils"
 )
 
-# Initialize and update only those submodules
-for sm_path in "${SUBMODULES[@]}"; do
+FAILED=()
+
+update_one_submodule() {
+  local sm_path="$1"
   echo "🔄 Initializing and updating submodule: $sm_path"
-  git submodule update --init "$sm_path"
 
-  # Switch to main or master branch if needed
-  (
-    cd "$sm_path"
-    git fetch origin || true
-    branch="main"
-    if ! git show-ref --verify --quiet refs/remotes/origin/main && git show-ref --verify --quiet refs/remotes/origin/master; then
-      branch="master"
+  if git submodule update --init "$sm_path"; then
+    echo "   📌 Left at platform-pinned commit"
+    return 0
+  fi
+
+  # Pinned commit missing on remote (e.g. deepiri-web-frontend 6465a07 on docker_build_fixes branch)
+  if [ ! -d "$sm_path/.git" ] && [ ! -f "$sm_path/.git" ]; then
+    git submodule init "$sm_path" 2>/dev/null || true
+  fi
+
+  if [ -d "$sm_path" ] && { [ -d "$sm_path/.git" ] || [ -f "$sm_path/.git" ]; }; then
+    echo "   ⚠️  Platform pin unavailable — falling back to origin/main"
+    if (cd "$sm_path" && git fetch origin && git checkout -B main origin/main); then
+      echo "   ✅ Checked out origin/main (update platform submodule SHA when you can)"
+      return 0
     fi
+  fi
 
-    current_branch=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
-    if [ "$current_branch" != "$branch" ]; then
-      echo "   Switching branch from '$current_branch' to '$branch'"
-      git checkout "$branch" 2>/dev/null || git checkout -b "$branch" "origin/$branch"
-    fi
+  echo "   ❌ Failed to initialize $sm_path"
+  return 1
+}
 
-    git pull origin "$branch" || true
-  )
+for sm_path in "${SUBMODULES[@]}"; do
+  if ! update_one_submodule "$sm_path"; then
+    FAILED+=("$sm_path")
+  fi
+  echo ""
 done
 
-echo ""
-echo "✅ Specific QA submodules initialized and updated."
+if [ ${#FAILED[@]} -gt 0 ]; then
+  echo "⚠️  Some submodules failed:"
+  for f in "${FAILED[@]}"; do
+    echo "   - $f"
+  done
+  echo ""
+  echo "💡 deepiri-web-frontend: platform may point at a commit that was never pushed."
+  echo "   Fix: cd deepiri-web-frontend && git fetch origin && git checkout main"
+  echo "   Then bump the submodule pointer on your platform branch."
+  echo ""
+fi
+
+# Quick sanity check for QA docker builds
+if [ ! -f "$REPO_ROOT/platform-services/shared/deepiri-synapse/Dockerfile" ]; then
+  echo "❌ Missing platform-services/shared/deepiri-synapse/Dockerfile"
+  echo "   Run: git submodule update --init platform-services/shared/deepiri-synapse"
+  exit 1
+fi
+
+echo "✅ QA submodule pull finished."
 echo ""
 
-# Automatically run setup-hooks.sh after pulling submodules
 echo "🔧 Setting up Git hooks for pulled submodules..."
 echo ""
 if [ -f "$SCRIPT_DIR/setup-hooks.sh" ]; then
     bash "$SCRIPT_DIR/setup-hooks.sh"
 else
     echo "⚠️  Warning: setup-hooks.sh not found at $SCRIPT_DIR/setup-hooks.sh"
-    echo "   Hooks will not be automatically configured."
 fi
 echo ""
+
+if [ ${#FAILED[@]} -gt 0 ]; then
+  exit 1
+fi
+
+
+git submodule update --remote deepiri-ollama-utils
+git submodule status deepiri-ollama-utils

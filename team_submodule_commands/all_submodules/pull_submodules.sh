@@ -67,8 +67,8 @@ cleanup_invalid_submodule() {
     fi
 }
 
-# Helper function to update submodule while preserving its current branch
-update_submodule_preserve_branch() {
+# Helper function to ensure submodule is on main branch and tracking it
+ensure_submodule_on_main() {
     local submodule_path="$1"
     if [ ! -d "$submodule_path" ]; then
         return 1
@@ -76,87 +76,47 @@ update_submodule_preserve_branch() {
     
     cd "$submodule_path" || return 1
     
-    # Fetch latest changes from all remotes
-    echo "    📥 Fetching latest changes..."
+    # Fetch latest changes
     git fetch origin 2>/dev/null || true
-    git fetch --all 2>/dev/null || true
     
-    # Get current branch or commit
-    local current_branch=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
-    local is_detached=false
-    
-    if [ -z "$current_branch" ]; then
-        is_detached=true
-        current_branch=$(git rev-parse --short HEAD 2>/dev/null || echo "detached")
-        echo "    📍 Currently in detached HEAD state at: $current_branch"
-    else
-        echo "    🌿 Current branch: $current_branch"
-    fi
-    
-    # If we're on a branch, try to update it
-    if [ "$is_detached" = false ] && [ -n "$current_branch" ]; then
-        # Check if remote tracking branch exists
-        local remote_branch="origin/$current_branch"
-        if git show-ref --verify --quiet "refs/remotes/$remote_branch" 2>/dev/null; then
-            echo "    🔄 Merging updates from $remote_branch..."
-            
-            # Check for uncommitted changes
-            if ! git diff-index --quiet HEAD -- 2>/dev/null; then
-                echo "    ⚠️  Uncommitted changes detected. Stashing..."
-                git stash push -m "Auto-stash before merge $(date +%Y-%m-%d_%H:%M:%S)" 2>/dev/null || true
-            fi
-            
-            # Try to merge
-            if git merge "$remote_branch" --no-edit 2>/dev/null; then
-                echo "    ✅ Successfully merged updates"
-            else
-                # Check if merge conflict occurred
-                if [ -f ".git/MERGE_HEAD" ]; then
-                    echo "    ⚠️  Merge conflicts detected!"
-                    echo "    💡 Please resolve conflicts manually in: $submodule_path"
-                    echo "    💡 After resolving, run: git add . && git commit"
-                    echo "    💡 To check conflict files: git diff --name-only --diff-filter=U"
-                else
-                    echo "    ⚠️  Merge failed. Current state preserved."
-                fi
-            fi
-            
-            # Restore stashed changes if any
-            if git stash list | grep -q "Auto-stash"; then
-                echo "    🔄 Restoring stashed changes..."
-                git stash pop 2>/dev/null || true
-            fi
+    # Determine which branch to use (main or master)
+    local branch="main"
+    if ! git show-ref --verify --quiet refs/heads/main && git show-ref --verify --quiet refs/remotes/origin/master; then
+        branch="master"
+    elif ! git show-ref --verify --quiet refs/remotes/origin/main; then
+        if git show-ref --verify --quiet refs/remotes/origin/master; then
+            branch="master"
         else
-            echo "    ℹ️  No remote tracking branch found for $current_branch"
-            echo "    💡 Branch exists locally but not on remote"
+            echo "    ⚠️  No main or master branch found, skipping branch checkout"
+            cd "$REPO_ROOT" || return 1
+            return 0
         fi
-        
-        # Set up tracking if not already set and remote branch exists
-        if git show-ref --verify --quiet "refs/remotes/$remote_branch" 2>/dev/null; then
-            if ! git config --get branch."$current_branch".remote > /dev/null 2>&1; then
-                git branch --set-upstream-to="$remote_branch" "$current_branch" 2>/dev/null || true
-            fi
-        fi
-    else
-        echo "    ℹ️  In detached HEAD state - preserving current commit"
-        echo "    💡 To work on a branch, checkout a branch first"
     fi
+    
+    # Check if we're in detached HEAD state
+    if ! git symbolic-ref -q HEAD > /dev/null; then
+        echo "    🔄 Detached HEAD detected, checking out $branch branch..."
+        git checkout -B "$branch" "origin/$branch" 2>/dev/null || git checkout "$branch" 2>/dev/null || true
+    else
+        # Check current branch
+        local current_branch=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
+        if [ "$current_branch" != "$branch" ]; then
+            echo "    🔄 Currently on '$current_branch', switching to $branch branch..."
+            git checkout "$branch" 2>/dev/null || git checkout -b "$branch" "origin/$branch" 2>/dev/null || true
+        fi
+    fi
+    
+    # Set up tracking if not already set
+    if ! git config --get branch."$branch".remote > /dev/null 2>&1; then
+        git branch --set-upstream-to="origin/$branch" "$branch" 2>/dev/null || true
+    fi
+    
+    # Pull latest changes
+    git pull origin "$branch" 2>/dev/null || true
     
     cd "$REPO_ROOT" || return 1
     return 0
 }
-
-# deepiri-core-api
-echo "  📦 deepiri-core-api (Core API - Team-Deepiri/deepiri-core-api)..."
-cleanup_invalid_submodule "deepiri-core-api"
-git submodule update --init --recursive deepiri-core-api 2>&1 || true
-if ! check_submodule "deepiri-core-api"; then
-    echo "    ❌ ERROR: deepiri-core-api not cloned correctly!"
-    echo "    💡 Try: git submodule update --init --recursive deepiri-core-api"
-    exit 1
-fi
-echo "    ✅ core-api initialized at: $(pwd)/deepiri-core-api"
-echo ""
 
 # diri-cyrex
 echo "  📦 diri-cyrex (Cyrex - Team-Deepiri/diri-cyrex)..."
@@ -192,6 +152,18 @@ if ! check_submodule "deepiri-web-frontend"; then
     exit 1
 fi
 echo "    ✅ web-frontend initialized at: $(pwd)/deepiri-web-frontend"
+echo ""
+
+# deepiri-suite
+echo "  📦 deepiri-suite (Base Docker Images - Team-Deepiri/deepiri-suite)..."
+cleanup_invalid_submodule "deepiri-suite"
+git submodule update --init deepiri-suite 2>&1 || true
+if ! check_submodule "deepiri-suite"; then
+    echo "    ❌ ERROR: deepiri-suite not cloned correctly!"
+    echo "    💡 Try: git submodule update --init deepiri-suite"
+    exit 1
+fi
+echo "    ✅ deepiri-suite initialized at: $(pwd)/deepiri-suite"
 echo ""
 
 # deepiri-external-bridge-service
@@ -266,25 +238,62 @@ fi
 echo "    ✅ prismpipe initialized at: $(pwd)/platform-services/shared/deepiri-prismpipe"
 echo ""
 
-# Update to latest while preserving current branches
-echo "🔄 Updating submodules while preserving their current branches..."
-update_submodule_preserve_branch "deepiri-core-api"
-update_submodule_preserve_branch "diri-cyrex"
-update_submodule_preserve_branch "platform-services/backend/deepiri-api-gateway"
-update_submodule_preserve_branch "deepiri-web-frontend"
-update_submodule_preserve_branch "platform-services/backend/deepiri-external-bridge-service"
-update_submodule_preserve_branch "platform-services/backend/deepiri-auth-service"
-update_submodule_preserve_branch "diri-helox"
-update_submodule_preserve_branch "deepiri-modelkit"
-update_submodule_preserve_branch "platform-services/backend/deepiri-language-intelligence-service"
-update_submodule_preserve_branch "platform-services/shared/deepiri-prismpipe"
-echo "    ✅ All submodules updated (branches preserved)"
+# deepiri-shared-utils
+echo "  📦 deepiri-shared-utils (Shared Utilities - Team-Deepiri/deepiri-shared-utils)..."
+cleanup_invalid_submodule "platform-services/shared/deepiri-shared-utils"
+git submodule update --init --recursive platform-services/shared/deepiri-shared-utils 2>&1 || true
+if ! check_submodule "platform-services/shared/deepiri-shared-utils"; then
+    echo "    ❌ ERROR: deepiri-shared-utils not cloned correctly!"
+    echo "    💡 Try: git submodule update --init --recursive platform-services/shared/deepiri-shared-utils"
+    exit 1
+fi
+echo "    ✅ shared-utils initialized at: $(pwd)/platform-services/shared/deepiri-shared-utils"
+echo ""
+
+# deepiri-synapse
+echo "  📦 deepiri-synapse (Matrix server - Team-Deepiri/deepiri-synapse)..."
+cleanup_invalid_submodule "platform-services/shared/deepiri-synapse"
+git submodule update --init --recursive platform-services/shared/deepiri-synapse 2>&1 || true
+if ! check_submodule "platform-services/shared/deepiri-synapse"; then
+    echo "    ❌ ERROR: deepiri-synapse not cloned correctly!"
+    echo "    💡 Try: git submodule update --init --recursive platform-services/shared/deepiri-synapse"
+    exit 1
+fi
+echo "    ✅ synapse initialized at: $(pwd)/platform-services/shared/deepiri-synapse"
+echo ""
+
+# deepiri-sugar-glider
+echo "  📦 deepiri-sugar-glider (Synapse stream bridge - Team-Deepiri/deepiri-sugar-glider)..."
+cleanup_invalid_submodule "platform-services/shared/deepiri-sugar-glider"
+git submodule update --init --recursive platform-services/shared/deepiri-sugar-glider 2>&1 || true
+if ! check_submodule "platform-services/shared/deepiri-sugar-glider"; then
+    echo "    ❌ ERROR: deepiri-sugar-glider not cloned correctly!"
+    echo "    💡 Try: git submodule update --init --recursive platform-services/shared/deepiri-sugar-glider"
+    exit 1
+fi
+echo "    ✅ sugar-glider initialized at: $(pwd)/platform-services/shared/deepiri-sugar-glider"
+echo ""
+
+# Update to latest on main branch
+echo "🔄 Updating submodules to main branch..."
+ensure_submodule_on_main "diri-cyrex"
+ensure_submodule_on_main "platform-services/backend/deepiri-api-gateway"
+ensure_submodule_on_main "deepiri-web-frontend"
+ensure_submodule_on_main "platform-services/backend/deepiri-external-bridge-service"
+ensure_submodule_on_main "platform-services/backend/deepiri-auth-service"
+ensure_submodule_on_main "diri-helox"
+ensure_submodule_on_main "deepiri-modelkit"
+ensure_submodule_on_main "platform-services/backend/deepiri-language-intelligence-service"
+ensure_submodule_on_main "platform-services/shared/deepiri-prismpipe"
+ensure_submodule_on_main "platform-services/shared/deepiri-shared-utils"
+ensure_submodule_on_main "platform-services/shared/deepiri-synapse"
+ensure_submodule_on_main "platform-services/shared/deepiri-sugar-glider"
+echo "    ✅ All submodules updated to main branch"
 echo ""
 
 # Show status
 echo "📊 Submodule Status:"
 echo ""
-git submodule status deepiri-core-api
 git submodule status diri-cyrex
 git submodule status platform-services/backend/deepiri-api-gateway
 git submodule status deepiri-web-frontend
@@ -294,12 +303,14 @@ git submodule status diri-helox
 git submodule status deepiri-modelkit
 git submodule status platform-services/backend/deepiri-language-intelligence-service
 git submodule status platform-services/shared/deepiri-prismpipe
+git submodule status platform-services/shared/deepiri-shared-utils
+git submodule status platform-services/shared/deepiri-synapse
+git submodule status platform-services/shared/deepiri-sugar-glider
 echo ""
 
 echo "✅ All submodules ready!"
 echo ""
 echo "📋 All Submodules:"
-echo "  ✅ deepiri-core-api"
 echo "  ✅ diri-cyrex"
 echo "  ✅ deepiri-api-gateway"
 echo "  ✅ deepiri-web-frontend"
@@ -309,11 +320,13 @@ echo "  ✅ diri-helox"
 echo "  ✅ deepiri-modelkit"
 echo "  ✅ deepiri-language-intelligence-service"
 echo "  ✅ deepiri-prismpipe (PrismPipe)"
+echo "  ✅ deepiri-shared-utils"
+echo "  ✅ deepiri-synapse"
+echo "  ✅ deepiri-sugar-glider"
 echo ""
 echo "📋 Quick Commands:"
 echo "  - Check status: git submodule status"
-echo "  - Update all: git submodule update --remote"
-echo "  - Work in Core API: cd deepiri-core-api"
+echo "  - Update all: git submodule update --init"
 echo "  - Work in Cyrex: cd diri-cyrex"
 echo "  - Work in API Gateway: cd platform-services/backend/deepiri-api-gateway"
 echo "  - Work in Frontend: cd deepiri-web-frontend"
@@ -323,5 +336,14 @@ echo "  - Work in Helox: cd diri-helox"
 echo "  - Work in Model Kit: cd deepiri-modelkit"
 echo "  - Work in Language Intelligence: cd platform-services/backend/deepiri-language-intelligence-service"
 echo "  - Work in PrismPipe: cd platform-services/shared/deepiri-prismpipe"
+echo "  - Work in Synapse: cd platform-services/shared/deepiri-synapse"
+echo "  - Work in Sugar Glider: cd platform-services/shared/deepiri-sugar-glider"
 echo ""
 
+# deepiri-ollama-utils - Shared Ollama runtime and CLI utilities
+echo "  📦 deepiri-ollama-utils (Shared Ollama Utilities)..."
+git submodule update --init --recursive deepiri-ollama-utils
+echo "    ✅ deepiri-ollama-utils initialized"
+
+git submodule update --remote deepiri-ollama-utils
+git submodule status deepiri-ollama-utils

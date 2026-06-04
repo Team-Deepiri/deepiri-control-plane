@@ -121,7 +121,6 @@
 - `skaffold/*.yaml` - Build and deployment
 
 **Your services:**
-- All infrastructure (MongoDB, Redis, InfluxDB)
 - API Gateway
 - All microservices (for monitoring)
 
@@ -182,7 +181,7 @@
    cd deepiri-platform
    ```
 
-2. **Set up Git hooks (REQUIRED - protects main and dev branches):**
+2. **Set up Git hooks (REQUIRED - protects main/master and branches containing team-dev):**
    ```bash
    ./setup-hooks.sh
    ```

@@ -14,7 +14,7 @@ echo "📦 Main repository: $REPO_ROOT"
 git config core.hooksPath .git-hooks
 
 if [ -f .git-hooks/pre-push ]; then
-    echo "✔ Main repo hooks enabled. You are now protected from pushing to 'main' or 'dev'."
+    echo "✔ Main repo hooks enabled. You are now protected from pushing to 'main', 'master', and branches containing 'team-dev'."
 else
     echo "⚠️  Warning: .git-hooks/pre-push not found. Make sure you're in the repository root."
     exit 1
@@ -80,7 +80,6 @@ SUBMODULES=(
     "platform-services/backend/deepiri-external-bridge-service"
     "platform-services/backend/deepiri-api-gateway"
     "platform-services/backend/deepiri-language-intelligence-service"
-    "deepiri-core-api"
     "deepiri-web-frontend"
 )
 

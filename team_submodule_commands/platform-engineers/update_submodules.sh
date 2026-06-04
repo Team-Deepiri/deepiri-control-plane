@@ -93,8 +93,6 @@ echo ""
 echo "🔄 Updating all submodules..."
 echo ""
 
-# Update deepiri-core-api
-update_submodule "deepiri-core-api" "deepiri-core-api (Core API)"
 echo ""
 
 # Update diri-cyrex
@@ -129,6 +127,14 @@ echo ""
 update_submodule "platform-services/shared/deepiri-prismpipe" "deepiri-prismpipe (PrismPipe - Capability-Routed API Pipeline)"
 echo ""
 
+# Update deepiri-synapse
+update_submodule "platform-services/shared/deepiri-synapse" "deepiri-synapse (Matrix server)"
+echo ""
+
+# Update deepiri-sugar-glider
+update_submodule "platform-services/shared/deepiri-sugar-glider" "deepiri-sugar-glider (Synapse stream bridge)"
+echo ""
+
 # Also update via git submodule update --remote for consistency (recursive to get nested submodules)
 echo "🔄 Syncing all submodule references (recursive)..."
 git submodule update --remote --recursive 2>/dev/null || true
@@ -143,7 +149,6 @@ echo ""
 echo "✅ All Platform Engineers submodules updated!"
 echo ""
 echo "📋 Updated Submodules:"
-echo "  ✅ deepiri-core-api"
 echo "  ✅ diri-cyrex"
 echo "  ✅ deepiri-api-gateway"
 echo "  ✅ deepiri-auth-service"
@@ -152,6 +157,7 @@ echo "  ✅ deepiri-web-frontend"
 echo "  ✅ diri-helox"
 echo "  ✅ deepiri-modelkit"
 echo "  ✅ deepiri-prismpipe (PrismPipe)"
+echo "  ✅ deepiri-synapse"
+echo "  ✅ deepiri-sugar-glider"
 echo "  ✅ All nested submodules (recursive)"
 echo ""
-

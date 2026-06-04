@@ -103,12 +103,12 @@ IMAGES=(
     "deepiri-dev-frontend"
     "deepiri-dev-api-gateway"
     "deepiri-dev-auth-service"
-    "deepiri-dev-task-orchestrator"
-    "deepiri-dev-challenge-service"
-    "deepiri-dev-engagement-service"
-    "deepiri-dev-platform-analytics-service"
+    "deepiri-dev-workflow-orchestrator"
+    "deepiri-dev-adaptive-experience-engine"
+    "deepiri-dev-incentive-engine"
+    "deepiri-dev-decision-intelligence"
     "deepiri-dev-external-bridge-service"
-    "deepiri-dev-notification-service"
+    "deepiri-dev-communications-hub"
     "deepiri-dev-realtime-gateway"
 )
 
@@ -197,7 +197,6 @@ if [ $? -eq 0 ]; then
     echo "🌐 Services available:"
     echo "   Backend API:      http://localhost:5000"
     echo "   Cyrex AI:         http://localhost:8000"
-    echo "   MongoDB:          localhost:27017"
     echo "   Redis:            localhost:6379"
     echo ""
     echo "💡 Note: Images were built with Minikube's Docker daemon"
@@ -207,4 +206,3 @@ else
     echo "❌ Failed to start services"
     exit 1
 fi
-

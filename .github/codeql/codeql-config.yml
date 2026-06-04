@@ -1,0 +1,27 @@
+name: deepiri-platform-codeql-config
+
+# Do not hardcode submodule paths here unless submodules are checked out in CI.
+# Let CodeQL scan checked-out repository files, while excluding noisy artifacts below.
+
+# Skip auto generated, and environment files.
+paths-ignore:
+  - '**/node_modules/**'
+  - '**/.next/**'
+  - '**/dist/**'
+  - '**/build/**'
+  - '**/logs/**'
+  - '**/tmp/**'
+  - '**/temp/**'
+  - '**/docs/**'
+  - '**/notebooks/**'
+  - '**/.venv/**'
+  - '**/venv/**'
+  - '**/.cache/**'
+  - '**/.ruff_cache/**'
+  - '**/.tox/**'
+  - '**/.eggs/**'
+  - '**/__pycache__/**'
+  - '**/.pytest_cache/**'
+  - '**/.mypy_cache/**'
+  - '**/coverage/**'
+  - '**/*.min.js'

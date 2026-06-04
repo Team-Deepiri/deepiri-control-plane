@@ -22,7 +22,7 @@ This directory contains team-specific build and start scripts for each developme
    # Or copy structure from ops/k8s/secrets/README.md
    ```
 
-This protects the `main` and `dev` branches from accidental pushes. See [BRANCH_PROTECTION.md](../BRANCH_PROTECTION.md) for details.
+This protects `main`, `master`, and branches containing `team-dev` from accidental pushes. See [BRANCH_PROTECTION.md](../BRANCH_PROTECTION.md) for details.
 
 ## Directory Structure
 
@@ -38,8 +38,8 @@ Each team has its own folder with:
 
 ## Teams
 
-- **ai-team/** - AI Team (cyrex, jupyter, mlflow, challenge-service)
-- **ml-team/** - ML Team (cyrex, jupyter, mlflow, platform-analytics-service)
+- **ai-team/** - AI Team (cyrex, jupyter, mlflow, adaptive-experience-engine)
+- **ml-team/** - ML Team (cyrex, jupyter, mlflow, decision-intelligence)
 - **backend-team/** - Backend Team (all backend microservices)
 - **frontend-team/** - Frontend Team (frontend + all backend services)
 - **infrastructure-team/** - Infrastructure Team (all infrastructure + all microservices)

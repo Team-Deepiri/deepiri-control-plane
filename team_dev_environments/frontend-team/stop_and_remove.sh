@@ -14,10 +14,12 @@ SERVICES=(
   frontend-dev
   api-gateway
   auth-service
-  notification-service
+  communications-hub
   messaging-service
   realtime-gateway
-  postgres
+  postgres-auth
+  postgres-core
+  postgres-intelligence
 )
 
 echo "🛑 Stopping and removing Frontend Team services..."

@@ -28,7 +28,7 @@ SERVICES=(
   cyrex cyrex-interface mlflow
   # jupyter  # DISABLED: No services depend on Jupyter - it's only for manual research/experimentation
   challenge-service api-gateway messaging-service realtime-gateway
-  ollama synapse
+  ollama synapse synapse-sugar-glider
   # deepiri-prismpipe  # PrismPipe - Capability-Routed API Pipeline (Coming Soon)
 )
 

@@ -14,7 +14,7 @@ cd ../..
 ./setup-hooks.sh
 ```
 
-This protects the `main` and `dev` branches from accidental pushes. See [BRANCH_PROTECTION.md](../../BRANCH_PROTECTION.md) for details.
+This protects `main`, `master`, and branches containing `team-dev` from accidental pushes. See [BRANCH_PROTECTION.md](../../BRANCH_PROTECTION.md) for details.
 
 ## Services
 
@@ -45,12 +45,12 @@ This protects the `main` and `dev` branches from accidental pushes. See [BRANCH_
 This builds all backend microservices:
 - `api-gateway`
 - `auth-service`
-- `task-orchestrator`
-- `engagement-service`
-- `platform-analytics-service`
-- `notification-service`
+- `workflow-orchestrator`
+- `incentive-engine`
+- `decision-intelligence`
+- `communications-hub`
 - `external-bridge-service`
-- `challenge-service`
+- `adaptive-experience-engine`
 - `realtime-gateway`
 
 ### Start Services
@@ -67,10 +67,10 @@ This starts all infrastructure and backend services.
 cd ../..
 docker compose -f docker-compose.dev.yml stop \
   postgres redis influxdb \
-  api-gateway auth-service task-orchestrator \
-  engagement-service platform-analytics-service \
-  notification-service external-bridge-service \
-  challenge-service realtime-gateway
+  api-gateway auth-service workflow-orchestrator \
+  incentive-engine decision-intelligence \
+  communications-hub external-bridge-service \
+  adaptive-experience-engine realtime-gateway
 ```
 
 ### Rebuild After Code Changes
@@ -140,14 +140,14 @@ docker compose -f docker-compose.dev.yml logs -f
 ```bash
 docker compose -f docker-compose.dev.yml logs -f api-gateway
 docker compose -f docker-compose.dev.yml logs -f auth-service
-docker compose -f docker-compose.dev.yml logs -f task-orchestrator
+docker compose -f docker-compose.dev.yml logs -f workflow-orchestrator
 # ... etc for all services
 ```
 
 ## What You Work On
 
 - `platform-services/backend/*/` - All microservices
-- `deepiri-core-api/` - Legacy monolith (being migrated)
+- `platform-services/backend/deepiri-api-gateway/` - API gateway entrypoint for backend microservices
 - API Gateway routing logic
 - Service-to-service communication
 
@@ -173,5 +173,5 @@ PostgreSQL is automatically initialized with the schema from `scripts/postgres-i
 - `analytics` schema - Analytics and metrics (momentum, streaks, boosts, etc.)
 - `audit` schema - Audit logs and history
 
-For services using Prisma (e.g., engagement-service), migrations are handled automatically during service startup. The Prisma client is generated during the Docker build process.
+For services using Prisma (e.g., incentive-engine), migrations are handled automatically during service startup. The Prisma client is generated during the Docker build process.
 
