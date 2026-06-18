@@ -42,3 +42,6 @@
 [submodule "deepiri-suite"]
 	path = deepiri-suite
 	url = git@github.com:Team-Deepiri/deepiri-suite.git
+[submodule "deepiri-logger"]
+	path = deepiri-logger
+	url = git@github.com:Team-Deepiri/deepiri-logger.git
