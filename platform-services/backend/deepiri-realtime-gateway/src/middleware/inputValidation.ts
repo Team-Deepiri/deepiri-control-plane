@@ -33,15 +33,6 @@ const logger = createLogger('realtime-gateway');
 const MAX_BODY_KEYS = 50;
 const MAX_STRING_VALUE_LENGTH = 10000;
 const APP_HEADER_PREFIX = 'x-';
-const ALLOWED_GAMIFICATION_EVENT_TYPES = new Set([
-  'momentum_awarded',
-  'level_up',
-  'streak_updated',
-  'boost_activated',
-  'objective_completed',
-  'milestone_completed',
-  'reward_earned',
-]);
 
 const getAppHeaders = (headers: Record<string, unknown>): Record<string, unknown> => {
   const appHeaders: Record<string, unknown> = {};
@@ -310,27 +301,4 @@ export const validateBodyIfPresent = () => {
     }
     next();
   };
-};
-
-export const validateEmitGamificationBody: BodyValidator = (body: Record<string, unknown>): string | null => {
-  if (!body.userId || typeof body.userId !== 'string' || body.userId.trim().length === 0) {
-    return 'userId is required and must be a non-empty string';
-  }
-
-  if (!body.type || typeof body.type !== 'string') {
-    return 'type is required and must be a string';
-  }
-
-  const eventType = body.type.trim();
-  if (!ALLOWED_GAMIFICATION_EVENT_TYPES.has(eventType)) {
-    return `type must be one of: ${Array.from(ALLOWED_GAMIFICATION_EVENT_TYPES).join(', ')}`;
-  }
-
-  if (!body.data || typeof body.data !== 'object' || Array.isArray(body.data)) {
-    return 'data is required and must be a JSON object';
-  }
-
-  body.userId = body.userId.trim();
-  body.type = eventType;
-  return null;
 };
