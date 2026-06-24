@@ -1,6 +1,3 @@
-[submodule "deepiri-core-api"]
-	path = deepiri-core-api
-	url = git@github.com:Team-Deepiri/deepiri-core-api.git
 [submodule "diri-cyrex"]
 	path = diri-cyrex
 	url = git@github.com:Team-Deepiri/diri-cyrex.git
@@ -45,3 +42,6 @@
 [submodule "deepiri-suite"]
 	path = deepiri-suite
 	url = git@github.com:Team-Deepiri/deepiri-suite.git
+[submodule "deepiri-logger"]
+	path = deepiri-logger
+	url = git@github.com:Team-Deepiri/deepiri-logger.git
