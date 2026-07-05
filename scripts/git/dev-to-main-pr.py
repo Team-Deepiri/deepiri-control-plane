@@ -213,6 +213,38 @@ def enable_auto_merge(repo_name: str, pr_url: str) -> tuple[bool, str]:
     }
     """
 
+    graphql_result = gh(
+        "api",
+        "graphql",
+        "-f",
+        f"query={graphql_query}",
+        "-f",
+        f"pullRequestId={pull_request_id}",
+    )
+    if graphql_result.returncode != 0:
+        return False, (graphql_result.stderr or graphql_result.stdout).strip()
+
+    try:
+        payload = json.loads(graphql_result.stdout or "{}")
+    except json.JSONDecodeError:
+        return False, "Failed to parse GraphQL response while enabling auto-merge"
+
+    errors = payload.get("errors")
+    if errors:
+        return False, json.dumps(errors)
+
+    enabled_at = (
+        payload.get("data", {})
+        .get("enablePullRequestAutoMerge", {})
+        .get("pullRequest", {})
+        .get("autoMergeRequest", {})
+        .get("enabledAt")
+    )
+    if enabled_at:
+        return True, "Auto-merge enabled"
+
+    return False, "Auto-merge was not enabled"
+
 def direct_merge(
     repo_name: str,
     base_branch: str,
