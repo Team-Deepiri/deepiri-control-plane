@@ -228,18 +228,20 @@ def apply_devops_label(repo_name: str, pr_url: str, dry_run: bool = False) -> bo
         )
         return True
 
+    # Use gh api REST (still gh auth — no extra PAT). Avoid `gh pr edit --add-label`
+    # which fails on Projects (classic) GraphQL deprecation.
     result = gh(
-        "pr", "edit", pr_number,
-        "--repo", repo_slug(repo_name),
-        "--add-label", label_name,
+        "api",
+        f"repos/{repo_slug(repo_name)}/issues/{pr_number}/labels",
+        "-X", "POST",
+        "-f", f"labels[]={label_name}",
     )
     if result.returncode == 0:
         print(f"  {Colors.GREEN}Labeled PR #{pr_number} with '{label_name}'{Colors.NC}")
         return True
 
     err = (result.stderr or result.stdout).strip()
-    # Already labeled is fine
-    if "already exists" in err.lower() or "not found" not in err.lower() and "added" in err.lower():
+    if "already" in err.lower():
         print(f"  {Colors.GREEN}Labeled PR #{pr_number} with '{label_name}'{Colors.NC}")
         return True
     print(f"  {Colors.YELLOW}Could not label PR #{pr_number}: {err}{Colors.NC}")
