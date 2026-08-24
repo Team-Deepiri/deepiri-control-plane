@@ -436,7 +436,7 @@ Services: `perception` (YoloDetector/MotionDetector → DINOv2 embedder → Obse
 
 1. **pgvector provisioned but unused in LIS** — `Embedding`/`embeddings` table exists; actual vectors live in Cyrex/Milvus. Several schema-only models (`documents`, `document_chunks`, `analysis_jobs`, `analysis_results`, `prompt_templates`) are not referenced by code.
 2. **`deepiri-shared-utils` storage_backend `s3` is not implemented** in dataset-processor (`NotImplementedError`); only `local` works.
-3. **`platform-services/shared/deepiri-prismpipe/` submodule dir is empty** in the platform checkout despite docs referencing it (`docs/GO_NO_GO_WIRING.md`).
+3. **`platform-services/shared/deepiri-prismpipe/` submodule is populated and pinned** (src, nodes, docs, Dockerfile — 112 files, resolved commit); a fresh clone must run `git submodule update --init` to see it, which can look like an empty dir if skipped (`docs/GO_NO_GO_WIRING.md`).
 4. **LIS has two divergent copies** — the top-level standalone is newer (unified-document ingestion, obligation service, chat) than the platform submodule pin.
 5. **Three repos share the same Redis stream topic vocabulary** (shared-utils, modelkit, prismpipe) — a drift risk if one changes without the others.
 6. **Dataset processor default label range 0–30** ("31 categories") matches Helox's 31-category intent classifier and Cyrex's 50-ability BERT classifier — the contract exists but is implicit, not enforced by modelkit.
