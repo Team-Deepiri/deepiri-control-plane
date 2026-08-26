@@ -1,0 +1,32 @@
+name: Control Plane CI
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [main, dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-dev-compose:
+    name: Validate docker-compose.dev.yml
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate compose
+        env:
+          REDIS_PASSWORD: password
+          JWT_SECRET: ci-jwt-secret-minimum-32-characters-long
+        run: |
+          set -euo pipefail
+          docker compose -f docker-compose.dev.yml config --quiet
+          services="$(docker compose -f docker-compose.dev.yml config --services)"
+          echo "$services"
+          echo "$services" | grep -Fxq speech
+          echo "$services" | grep -Fxq livekit
+          echo "$services" | grep -Fxq cyrex
+          echo "$services" | grep -Fxq language-intelligence-service

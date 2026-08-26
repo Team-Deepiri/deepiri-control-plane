@@ -356,7 +356,7 @@ ensure_ssh_key_for_github() {
 }
 
 # ---------- project directory + clone -------------------------------------
-PLATFORM_REPO_URL="git@github.com:Team-Deepiri/deepiri-platform.git"
+PLATFORM_REPO_URL="git@github.com:Team-Deepiri/deepiri-control-plane.git"
 PLATFORM_REPO_DIR=""
 
 choose_project_dir() {

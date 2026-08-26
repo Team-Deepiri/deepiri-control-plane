@@ -1,3 +1,26 @@
+# Deepiri Control Plane
+
+Local / lab builder stack: Cyrex, LIS, speech engine, Kafka, Milvus, full gateway.
+
+| Compose | Purpose |
+|---------|---------|
+| **`docker-compose.dev.yml`** | Main dev stack (all teams) |
+| `docker-compose.yml` | Optional prod-shaped local profile |
+
+**Cloud portal (VPS):** [Team-Deepiri/deepiri-platform](https://github.com/Team-Deepiri/deepiri-platform)
+
+## Quick start
+
+```bash
+git clone git@github.com:Team-Deepiri/deepiri-control-plane.git
+cd deepiri-control-plane
+bash setup-deepiri-dev.sh
+```
+
+Speech engine (`livekit` + `speech`) is in `teams/all-services.yml` and `docker-compose.dev.yml`.
+
+See `docs/architecture/REPO_SPLIT.md`.
+
 # Deepiri Platform
 
 > **NEW TO THE PROJECT?** Start here: [docs/getting-started/START_HERE.md](docs/getting-started/START_HERE.md)  
