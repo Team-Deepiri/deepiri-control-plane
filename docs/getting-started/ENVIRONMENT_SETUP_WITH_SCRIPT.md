@@ -5,7 +5,7 @@ This guide is the **fast path** for local development. A **single unified script
 - **macOS / Debian Linux / Debian WSL2:** **[`setup-deepiri-dev.sh`](../../setup-deepiri-dev.sh)**
 - **Windows (native PowerShell):** **[`setup-deepiri-dev.ps1`](../../setup-deepiri-dev.ps1)**
 
-Either script detects your platform, installs missing tooling, configures GitHub SSH, clones (or reuses) **`deepiri-platform`**, initializes **only the submodules your team needs**, brings up **only the services your team + hardware tier needs** via `docker compose`, and seeds Postgres when possible.
+Either script detects your platform, installs missing tooling, configures GitHub SSH, clones (or reuses) **`deepiri-control-plane`**, initializes **only the submodules your team needs**, brings up **only the services your team + hardware tier needs** via `docker compose`, and seeds Postgres when possible.
 
 > **What changed.** There are no longer per‑team `team_dev_environments/<team>/build.sh` / `start.sh` or `team_submodule_commands/<team>/pull_submodules.sh` wrappers. That logic is now **built into the one script** and selected with **`--team`** and **`--tier`** flags (or interactive prompts). If a doc or script still tells you to `cd team_dev_environments/...`, it is stale — see [§9 Troubleshooting](#9-troubleshooting).
 
@@ -22,13 +22,13 @@ You have **two** supported paths:
 - **Native PowerShell (recommended, no WSL required):** run **`setup-deepiri-dev.ps1`**. It auto‑installs prerequisites via **winget** (`git`, **Docker Desktop**, `python`, `node`), sets up an SSH key, and runs the same team/tier/submodule/docker orchestration. Docker Desktop provides the engine.
 - **Debian on WSL2:** if you prefer a Linux shell, install **WSL2 with a Debian** distribution and run **`setup-deepiri-dev.sh`** from inside it. The bash script **exits on non‑Debian** Linux/WSL — it expects Debian's `apt` toolchain (install with `wsl --install -d Debian` from PowerShell, then open the **Debian** shell).
 
-Either way you need a **GitHub account** with access to **`Team-Deepiri/deepiri-platform`**; both scripts help set up SSH.
+Either way you need a **GitHub account** with access to **`Team-Deepiri/deepiri-control-plane`**; both scripts help set up SSH.
 
 ### macOS
 
 1. Run **`setup-deepiri-dev.sh`**. It installs **missing** CLI tools via **Homebrew** (running the official Homebrew installer if Homebrew is absent).
 2. **Docker Desktop for Mac** is the usual path: the script may install the app, but **you must open Docker Desktop** and wait until **"Engine running"** (the script checks whether `docker info` works).
-3. **GitHub SSH** configured for cloning `git@github.com:Team-Deepiri/deepiri-platform.git` (the script can generate a key and walk you through adding it).
+3. **GitHub SSH** configured for cloning `git@github.com:Team-Deepiri/deepiri-control-plane.git` (the script can generate a key and walk you through adding it).
 
 > **Apple Silicon / MPS note (AI team):** on Mac the script **excludes `cyrex` and `ollama` from Docker** because they run **natively** against MPS instead. On Linux/WSL with a GPU those run in containers.
 
@@ -41,7 +41,7 @@ Either way you need a **GitHub account** with access to **`Team-Deepiri/deepiri-
 
 ## 2. Docker in this repo (what you're running)
 
-Deepiri runs **mostly in containers** orchestrated by **Docker Compose**, using **`docker-compose.dev.yml`** at the **`deepiri-platform`** repo root.
+Deepiri runs **mostly in containers** orchestrated by **Docker Compose**, using **`docker-compose.dev.yml`** at the **`deepiri-control-plane`** repo root (main dev compose).
 
 - **Docker Engine** builds and runs **images** defined in service Dockerfiles; your code often **bind-mounts** into containers for hot reload, so host-side `pip install` / `npm install` are **not** the primary dependency path — that happens **inside images** during **`docker compose build`**.
 - **Compose** reads **`docker-compose.dev.yml`**, wires **networks and ports**, and starts named **services** (e.g. `api-gateway`, `cyrex`).
@@ -65,7 +65,7 @@ The script runs these steps in order:
 | Hardware + tier | Detects RAM/GPU, suggests a **tier** (see [§5](#tiers-t1--t2--t3)); prompt or `--tier` picks **T1 / T2 / T3** |
 | Prerequisites | Installs missing: `git`, `curl`, `python3`, `pip3`, `node`, `npm`, `ssh`, **Docker**, **Compose plugin**; ensures **`pyyaml`** |
 | GitHub SSH | Helps generate `~/.ssh/id_ed25519`, shows the public key to add at [GitHub SSH settings](https://github.com/settings/ssh/new), optional connectivity test |
-| Clone | Prompts for parent folder (default `$HOME`), clones to **`$PARENT/Deepiri/deepiri-platform`** — or **reuses the existing clone** if you run the script from inside one |
+| Clone | Prompts for parent folder (default `$HOME`), clones to **`$PARENT/Deepiri/deepiri-control-plane`** — or **reuses the existing clone** if you run the script from inside one |
 | Submodules | **Team‑scoped** init, built in (replaces `team_submodule_commands/`). See the [submodule policy](#submodule-policy) |
 | Services | **Team + tier‑scoped** `docker compose up -d` (replaces `team_dev_environments/`); `--no-build` unless you pass `--build` |
 | DB seed | Applies **`scripts/database/postgres-seed.sql`** against **`deepiri-postgres-core-dev`** when that container is up |
@@ -189,12 +189,12 @@ Do **not** start a Docker build until every required submodule is initialized.
 
 Sensitive and non‑sensitive config for Compose-style runs is modeled after Kubernetes files under **`ops/k8s/`**.
 
-> **Do this _before_ you bring services up.** The **`/secrets`** payload is **not committed to the repo** — **request it from your team lead first**, then place it into **`deepiri-platform/ops/k8s/secrets/`**. Starting the stack before the secrets are in place leaves services **failing health checks** or exiting on startup.
+> **Do this _before_ you bring services up.** The **`/secrets`** payload is **not committed to the repo** — **request it from your team lead first**, then place it into **`deepiri-control-plane/ops/k8s/secrets/`**. Starting the stack before the secrets are in place leaves services **failing health checks** or exiting on startup.
 
 Steps:
 
 1. **Ask your team lead** for the current `/secrets` payload — do this **before** running the setup script (or before `--build` / bringing services up).
-2. Drop the provided **`/secrets`** payload into **`deepiri-platform/ops/k8s/secrets/`** (as your team distributes it).
+2. Drop the provided **`/secrets`** payload into **`deepiri-control-plane/ops/k8s/secrets/`** (as your team distributes it).
 3. For variable names and file layout, see **[ENVIRONMENT_VARIABLES.md](ENVIRONMENT_VARIABLES.md)**.
 
 Until required secrets/config exist, some services may **fail health checks** or exit — check **`docker compose` logs** (below).
@@ -203,7 +203,7 @@ Until required secrets/config exist, some services may **fail health checks** or
 
 ## 7. Additional useful commands
 
-Run these from **`deepiri-platform`** unless noted.
+Run these from **`deepiri-control-plane`** unless noted.
 
 ### Service control (Compose)
 

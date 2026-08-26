@@ -15,19 +15,19 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLATFORM_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# Check if deepiri-platform exists
+# Check if deepiri-control-plane exists
 if [ ! -d "$PLATFORM_DIR" ]; then
-    echo -e "${RED}Error: deepiri-platform directory not found at $PLATFORM_DIR${NC}"
+    echo -e "${RED}Error: deepiri-control-plane directory not found at $PLATFORM_DIR${NC}"
     exit 1
 fi
 
-# Check if deepiri-platform is a git repo
+# Check if deepiri-control-plane is a git repo
 if [ ! -d "$PLATFORM_DIR/.git" ]; then
     echo -e "${RED}Error: $PLATFORM_DIR is not a git repository${NC}"
     exit 1
 fi
 
-echo -e "${GREEN}Checking for changes in deepiri-platform and submodules...${NC}"
+echo -e "${GREEN}Checking for changes in deepiri-control-plane and submodules...${NC}"
 
 # Function to check for changes
 check_changes() {
@@ -36,7 +36,7 @@ check_changes() {
     # Check main repo
     cd "$PLATFORM_DIR"
     if ! git diff-index --quiet HEAD -- 2>/dev/null || [ -n "$(git status --porcelain)" ]; then
-        echo -e "${YELLOW}Changes detected in deepiri-platform:${NC}"
+        echo -e "${YELLOW}Changes detected in deepiri-control-plane:${NC}"
         git status --short
         has_changes=true
     fi
@@ -94,7 +94,7 @@ if [ "$has_changes" = "true" ]; then
     echo ""
     echo -e "${RED}WARNING: Uncommitted changes detected!${NC}"
     echo -e "${YELLOW}This script will wipe out all changes in:${NC}"
-    echo "  - deepiri-platform repository"
+    echo "  - deepiri-control-plane repository"
     echo "  - All submodules"
     echo ""
     read -p "Do you want to continue and wipe out all changes? (yes/no): " confirm
@@ -144,7 +144,7 @@ reset_submodules() {
 }
 
 # Reset main repository
-echo -e "${GREEN}Resetting deepiri-platform to HEAD...${NC}"
+echo -e "${GREEN}Resetting deepiri-control-plane to HEAD...${NC}"
 cd "$PLATFORM_DIR"
 git reset --hard HEAD
 git clean -fd
@@ -207,5 +207,5 @@ cd "$PLATFORM_DIR"
 git submodule update --init --recursive --force
 
 echo -e "${GREEN}Done!${NC}"
-echo -e "${GREEN}deepiri-platform and all submodules have been reset and updated.${NC}"
+echo -e "${GREEN}deepiri-control-plane and all submodules have been reset and updated.${NC}"
 

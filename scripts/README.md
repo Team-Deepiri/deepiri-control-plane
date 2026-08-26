@@ -124,7 +124,7 @@ scripts/
 ### Daily Development
 ```bash
 # 1. Build (from project root)
-cd deepiri-platform
+cd deepiri-control-plane
 ./build.sh                    # Linux/Mac/WSL
 .\build.ps1                   # Windows
 

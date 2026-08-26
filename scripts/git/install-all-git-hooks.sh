@@ -41,8 +41,8 @@ install_hooks() {
     fi
 }
 
-# Install hooks for main repo (deepiri-platform)
-echo "🏠 Installing hooks for main repository (deepiri-platform)..."
+# Install hooks for main repo (deepiri-control-plane)
+echo "🏠 Installing hooks for main repository (deepiri-control-plane)..."
 if [ -d ".git" ] && [ -f ".git-hooks/pre-push" ]; then
     mkdir -p .git/hooks
     if [ -f ".git-hooks/post-checkout" ]; then

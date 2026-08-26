@@ -2,14 +2,14 @@
 # init-all-repos.sh
 # Bootstraps the full Team-Deepiri workspace in one shot:
 #
-#   1. Repos that are submodules of deepiri-platform
+#   1. Repos that are submodules of deepiri-control-plane
 #        → git submodule update --init <path>
 #   2. Repos that are submodules of any platform submodule (nested)
 #        → cd <parent> && git submodule update --init <nested-path>
 #   3. All other org repos (external)
-#        → git clone <ssh-url> into the sibling directory of deepiri-platform
+#        → git clone <ssh-url> into the sibling directory of deepiri-control-plane
 #
-# Run this from anywhere inside the deepiri-platform repo tree.
+# Run this from anywhere inside the deepiri-control-plane repo tree.
 
 # Don't use set -e — we want to continue processing even if individual repos fail
 

@@ -29,8 +29,8 @@ setup_hooks() {
     fi
 }
 
-# Setup hooks for main repo (deepiri-platform)
-echo "🏠 Setting up hooks for main repository (deepiri-platform)..."
+# Setup hooks for main repo (deepiri-control-plane)
+echo "🏠 Setting up hooks for main repository (deepiri-control-plane)..."
 if [ -f ".git-hooks/pre-push" ]; then
     git config core.hooksPath .git-hooks
     chmod +x .git-hooks/pre-push
