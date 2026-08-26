@@ -45,3 +45,7 @@
 [submodule "deepiri-logger"]
 	path = deepiri-logger
 	url = git@github.com:Team-Deepiri/deepiri-logger.git
+[submodule "deepiri-elkedel"]
+	path = deepiri-elkedel
+	url = git@github.com:Team-Deepiri/deepiri-elkedel.git
+	branch = main
