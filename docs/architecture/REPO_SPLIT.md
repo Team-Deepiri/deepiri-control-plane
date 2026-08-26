@@ -4,7 +4,7 @@
 
 | Repo | What it is | Compose file |
 |------|------------|--------------|
-| **`deepiri-control-plane`** | Full local/lab stack (Cyrex, LIS, Kafka, Milvus, full gateway) | `docker-compose.control-plane.yml` (same as `docker-compose.dev.yml`) |
+| **`deepiri-control-plane`** | Full local/lab stack (Cyrex, LIS, Kafka, Milvus, speech engine) | **`docker-compose.dev.yml`** (main dev compose) |
 | **`deepiri-platform`** | Cloud VPS internal portal only | `docker-compose.yml` |
 
 ## Target GitHub layout
