@@ -79,7 +79,7 @@ CREATE TABLE IF NOT EXISTS cyrex.helox_training_samples (
 -- indexes: created_at DESC, stream_type, quality_score, producer
 ```
 
-Contract rule: *every* publish to `pipeline.helox-training.raw/.structured` must also upsert here with matching `record_id` (Redis = low-latency source, Postgres = durable replay). **See gap G1 — this upsert is not implemented in the producer.**
+Contract rule: *every* publish to `pipeline.helox-training.raw/.structured` must also upsert here with matching `record_id` (Redis = low-latency source, Postgres = durable replay). **See gap G1 — Cyrex main implements this upsert; the platform submodule pin is stale and still lacks it.**
 
 ### A1.4 Dataset versioning (`dataset_versions`, SQLAlchemy)
 
@@ -204,18 +204,18 @@ Published to `platform-events` / `ingestion-events`: `document-created`, `docume
 
 # Part B — Gap Audit & Recommendations
 
-Verdict up front: **the dataset processor needs targeted beefing-up (it is the weakest link for scale), the training orchestrator needs only small completions (it is intentionally minimal and mostly fine), and the biggest risks are pipeline-level (mirror-contract enforcement, DLQ drainage, topic-vocabulary drift).**
+Verdict up front: **the dataset processor needs targeted beefing-up (it is the weakest link for scale), the training orchestrator needs only small completions (it is intentionally minimal and mostly fine), and the biggest risks are pipeline-level (submodule-pin drift on the Helox mirror, DLQ drainage, topic-vocabulary drift).**
 
 ## B1. Ranked findings
 
 | # | Severity | Area | Finding |
 |---|---|---|---|
-| G1 | **High** | Cyrex→Helox | Mirror contract requires upserting every streamed record into `cyrex.helox_training_samples`, but `realtime_data_pipeline.py` contains **no upsert call** — grep confirms zero references. Redis-only capture means any stream truncation/restart silently loses training history; the durable-replay promise is unenforced. |
+| G1 | **High** | Platform pin / Cyrex→Helox | Mirror contract requires upserting every streamed record into `cyrex.helox_training_samples`. **Cyrex `main` already implements the upsert** (Postgres durable path in `realtime_data_pipeline.py` / training emitter). The **platform submodule pin is older** than that commit, so a platform checkout still sees Redis-only capture — this is **submodule-pin staleness**, not an unresolved Cyrex gap. Bumping the pin restores the durable-replay promise. |
 | G2 | **High** | Pipeline | `pipeline.dead-letter` and `bedd.dlq` have producers (Cyrex pipeline, PrismPipe ops store) but **no drainer/alerting consumer** anywhere. Poison records accumulate invisibly. |
-| G3 | **High** | Dataset processor | Semantic dedup is in-memory O(n²) cosine similarity with no ANN index (no faiss/hnswlib). Fine at ≤~50k rows; will not scale to real corpus sizes. Also loads whole corpora into memory — no chunked/streaming mode. |
+| G3 | **High** | Dataset processor | Semantic dedup uses embedding cosine similarity with **optional LSH bucketing** (default on for corpora >50 rows) — not a pure O(n²) all-pairs scan. Still in-memory with no ANN index (no faiss/hnswlib), and loads whole corpora into memory — fine at ≤~50k rows; will not scale to real corpus sizes without chunked/streaming mode. |
 | G4 | **Medium-High** | Dataset processor | `storage_backend="s3"` is the **default** in `dataset_versions` but raises `NotImplementedError` — only `local` works. Any consumer trusting the default fails at commit time. |
-| G5 | **Medium** | Dataset processor | Quality checker declares 7 dimensions but implements 4 (completeness, consistency, validity, uniqueness). Timeliness/accuracy/integrity thresholds exist in config with no checks behind them — the report implies coverage it doesn't have. |
-| G6 | **Medium** | Contracts | The 31-category label range (0–30) is hardcoded independently in dataset-processor defaults, Helox `CATEGORY_MAP`, and synthetic generator; Cyrex's BERT uses 50 abilities. No shared, enforced contract in modelkit. A drift here trains silently mislabeled models. |
+| G5 | **Medium** | Dataset processor | Quality checker **implements all 7 dimensions** (completeness, consistency, validity, uniqueness, timeliness, accuracy, integrity). The remaining gap is **silent/undisclosed skips** (e.g. accuracy returns no metrics when sample count is below the outlier threshold; some dimensions pass-with-assumption when columns are missing) — reports can overstate coverage without surfacing what was skipped. |
+| G6 | **Medium** | Contracts | The 31-category label range (0–30) is hardcoded independently in **at least two verified places** (dataset-processor defaults and Helox `CATEGORY_MAP`; a synthetic generator path may duplicate it). Cyrex's BERT uses 50 abilities. No shared, enforced contract in modelkit. A drift here trains silently mislabeled models. |
 | G7 | **Medium** | Shared vocabulary | Redis topic list is copy-pasted across shared-utils, modelkit, prismpipe. Already drifted once (prismpipe adds envelope-type mapping). One rename breaks consumers cross-repo with no CI guard. |
 | G8 | **Medium** | Training orchestrator | Checkpoints are JSON `{step, metrics, fingerprint}` only — **no optimizer/model state**, so "resume" restarts weights from scratch; EarlyStopping sets a stop flag but never saves best weights (no best-checkpoint callback). |
 | G9 | **Low-Medium** | LIS | pgvector extension + `embeddings` table provisioned but never written; plus 6 schema-only models (`documents`, `document_chunks`, `analysis_jobs`, `analysis_results`, `prompt_templates`). Dead schema invites confusion about where vectors live (answer: Milvus via Cyrex). |
@@ -228,10 +228,10 @@ Verdict up front: **the dataset processor needs targeted beefing-up (it is the w
 
 ## B2. Does the dataset processor need beefing up? — Yes, specifically:
 
-1. **Scale path for dedup**: add an ANN option (`hnswlib`/`faiss` extra) behind the existing `.encode()` injection point, and a chunked/streaming reader for JSONL larger than memory. Keep zero-dep core; put scale in extras like today.
+1. **Scale path for dedup**: LSH bucketing already reduces pairwise work; add an ANN option (`hnswlib`/`faiss` extra) behind the existing `.encode()` injection point, and a chunked/streaming reader for JSONL larger than memory. Keep zero-dep core; put scale in extras like today.
 2. **Fix the S3 default**: either implement the S3 backend (boto3 is already all over the platform) or flip the default to `local` and log loudly. One-line-class fix, high footgun removal.
-3. **Finish or shrink the quality checker**: implement timeliness/accuracy/integrity or remove them from `QualityConfig` and the report so scores aren't overstated.
-4. **Make the label contract explicit**: move `label_id` range + mapping validation into a modelkit contract (shared with Helox `CATEGORY_MAP`) instead of three private copies.
+3. **Disclose quality-checker skips**: all 7 dimensions are implemented — surface skipped/assumed dimensions explicitly in the report (and/or require columns) so scores aren't quietly overstated.
+4. **Make the label contract explicit**: move `label_id` range + mapping validation into a modelkit contract (shared with Helox `CATEGORY_MAP`) instead of independent hardcoded copies.
 5. **Optional**: pluggable PII detection hook (Bedd/presidio adapters) so cleaning-stage outputs are privacy-safe by construction rather than relying on upstream LIS Bedd or Cyrex transform-stage redaction.
 
 ## B3. Does the training orchestrator need beefing up? — Only small completions:
@@ -240,13 +240,13 @@ Its minimalism is a feature (framework-agnostic `train_step` + callbacks). Worth
 
 1. **Stateful checkpoints**: optional `save_state_fn/load_state_fn` hooks so `CheckpointCallback` can persist optimizer/model blobs (to MinIO/local) alongside the JSON metrics — completes the resume story.
 2. **Best-checkpoint callback**: track best monitored metric, save marker + fingerprint, expose in `TrainingContext` — pairs with EarlyStopping.
-3. **Declare optional deps**: `wandb`/`dvc` are soft-imported but absent from `pyproject` extras — add `[extras.track]` so users know they exist.
+3. **Tracking deps (current state)**: `wandb` is already an optional Poetry extra (`[tool.poetry.extras] wandb` / `full`). Legacy **DVC support was removed** (dataset versioning now goes through deepiri-dataset-processor); do not document DVC as an undeclared soft-import.
 4. **Async eval support**: allow `eval_fn` to return an awaitable (Helox pipelines are increasingly async).
 Skip: distributed training (correctly delegated to accelerate/DeepSpeed in Helox), schedulers (out of scope).
 
 ## B4. Pipeline-level recommendations (highest leverage first)
 
-1. **Enforce G1**: implement the `helox_training_samples` upsert in the Cyrex publisher (single write path, `record_id` = stream id) + a reconciliation job that diffs Redis vs Postgres counts per day. Add a contract test so it can't regress silently.
+1. **Close G1 via pin bump**: fast-forward the platform `diri-cyrex` submodule to a revision that includes the `helox_training_samples` upsert (already on Cyrex `main`) + keep a reconciliation job that diffs Redis vs Postgres counts per day. Add a contract test so the pin can't regress silently behind Cyrex.
 2. **Stand up a DLQ drainer (G2)**: one small consumer service (PrismPipe node or Helox worker) that reads `pipeline.dead-letter` + `bedd.dlq`, persists to a table, counts by reason, and alerts on growth. Dead letters are training-data loss.
 3. **Single-source the stream topics (G7)**: make modelkit's `StreamTopics` the canonical package; shared-utils/prismpipe re-export or generate from it; add a CI check that fails on vocabulary diff. Cheapest possible fix for a whole class of silent breakage.
 4. **Producer-side quality gate (G12)**: reuse the existing `quality_score` field — skip capture below ~0.3 at `capture_interaction` time (configurable), keeping the raw stream clean without changing Helox.

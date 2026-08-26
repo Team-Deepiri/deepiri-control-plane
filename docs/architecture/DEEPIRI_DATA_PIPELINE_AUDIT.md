@@ -149,7 +149,7 @@ Peripheral: `deepiri-elkedel` (Cyrex's "eyes") is a sensory/perception sidecar t
 |---|---|
 | `networkx` | Pipeline DAG build, topo sort, cycle detection (`PipelineOrchestrator`) |
 | `numpy` | Embedding cosine similarity, quality math |
-| `sentence-transformers` (extra `semantic`) | Semantic dedup embedding provider (any `.encode()` object works) |
+| `sentence-transformers` (extra `semantic`) | Semantic dedup embedding provider (any `.encode()` object works; optional LSH bucketing for scale) |
 | `sqlalchemy` (extra `versioning`) | `dataset_versions` table + session management |
 | `pydantic` (extra `versioning`) | `DatasetVersionMetadata` schema |
 | `pandas` (extra `quality`) | DataFrame checks (completeness/consistency/uniqueness) |
@@ -158,8 +158,8 @@ Peripheral: `deepiri-elkedel` (Cyrex's "eyes") is a sensory/perception sidecar t
 
 ### Data types
 - **Input:** `List[str]` texts, `List[Dict]` records (`text` + `label` required), JSONL (primary) / JSON / CSV / Parquet.
-- **Output:** `ProcessedData` `{data, metadata, quality_metrics, schema_version}`; quality reports (7 dims: completeness/consistency/validity/uniqueness/timeliness/accuracy/integrity); dedup reports; leakage reports; version records.
-- **Label contract:** string label → `label_id` int, range 0–30 ("31 categories").
+- **Output:** `ProcessedData` `{data, metadata, quality_metrics, schema_version}`; quality reports (all 7 dims implemented: completeness/consistency/validity/uniqueness/timeliness/accuracy/integrity — some dims may silently skip or assume-pass when columns/sample thresholds are unmet); dedup reports; leakage reports; version records.
+- **Label contract:** string label → `label_id` int, range 0–30 ("31 categories"; verified in dataset-processor + Helox).
 
 ### Stages (`DatasetPipeline` / networkx `PipelineOrchestrator`)
 `data_loading → data_cleaning → data_validation → data_routing → label_validation → data_transformation` + standalone `quality_check`. Helpers: `TextCleaner`, `ExactDeduplicator`, `SemanticDeduplicationEngine`, `DataLeakageDetector`, `QualityChecker`.
@@ -312,16 +312,17 @@ Other pipelines: full LoRA/QLoRA (Mistral-7B nf4), DeepSpeed ZeRO distributed, R
 | `torch` | seeding, CUDA determinism |
 | `numpy` | seeding |
 | `mlflow` | all tracking + model registry |
-| `wandb` (optional, soft-import) | parallel experiment tracking |
-| `dvc` (optional, shelled out) | dataset versioning |
+| `wandb` (optional Poetry extra) | parallel experiment tracking when installed + `use_wandb=True` |
 | `pytest`, `ruff` | dev |
+
+Legacy DVC helpers were **removed**; dataset versioning is via deepiri-dataset-processor, not an undeclared DVC soft-import.
 
 ### Data types
 - **Input:** arbitrary config `Mapping[str, Any]`, any `Iterable` of batches, `train_step(step, batch) -> metrics` callable, optional `eval_fn()`.
 - **Output:** `TrainingContext`, JSON checkpoints (`checkpoint_step_{n}.json`), fingerprint files (`training_fingerprint.json`, 16-char SHA256), MLflow runs (params/metrics/`dataset_path`/`dataset_hash` SHA256/artifacts), MLflow registry stages Staging/Production.
 
 ### Database
-MLflow Tracking Server (default `http://localhost:5000`; file or SQL backend), MLflow Model Registry, optional DVC repo. No direct Postgres/Redis/Milvus/MinIO.
+MLflow Tracking Server (default `http://localhost:5000`; file or SQL backend), MLflow Model Registry. No direct Postgres/Redis/Milvus/MinIO.
 
 ---
 
@@ -439,4 +440,4 @@ Services: `perception` (YoloDetector/MotionDetector → DINOv2 embedder → Obse
 3. **`platform-services/shared/deepiri-prismpipe/` submodule is populated and pinned** (src, nodes, docs, Dockerfile — 112 files, resolved commit); a fresh clone must run `git submodule update --init` to see it, which can look like an empty dir if skipped (`docs/GO_NO_GO_WIRING.md`).
 4. **LIS has two divergent copies** — the top-level standalone is newer (unified-document ingestion, obligation service, chat) than the platform submodule pin.
 5. **Three repos share the same Redis stream topic vocabulary** (shared-utils, modelkit, prismpipe) — a drift risk if one changes without the others.
-6. **Dataset processor default label range 0–30** ("31 categories") matches Helox's 31-category intent classifier and Cyrex's 50-ability BERT classifier — the contract exists but is implicit, not enforced by modelkit.
+6. **Dataset processor default label range 0–30** ("31 categories") matches Helox's 31-category intent classifier (two verified hardcoded copies; Cyrex's BERT uses 50 abilities) — the contract exists but is implicit, not enforced by modelkit.
