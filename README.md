@@ -21,55 +21,17 @@ Speech engine (`livekit` + `speech`) is in `teams/all-services.yml` and `docker-
 
 See `docs/architecture/REPO_SPLIT.md`.
 
-# Deepiri Platform
+> **NEW TO THE PROJECT?** [docs/getting-started/START_HERE.md](docs/getting-started/START_HERE.md)  
+> **FIND YOUR TEAM:** [docs/getting-started/FIND_YOUR_TASKS.md](docs/getting-started/FIND_YOUR_TASKS.md)
 
-> **NEW TO THE PROJECT?** Start here: [docs/getting-started/START_HERE.md](docs/getting-started/START_HERE.md)  
-> **FIND YOUR TEAM:** [docs/getting-started/FIND_YOUR_TASKS.md](docs/getting-started/FIND_YOUR_TASKS.md)  
-> **Quick Start (All Services):** `bash setup-deepiri-dev.sh start platform` or use docker compose directly
-
-## Quick Start
-
-### Setup script (Recommended)
-
-Download `setup-deepiri-dev.sh` from this repo and save it to any directory on your system. Run the script from your terminal and follow the instruction
+## Day-to-day
 
 ```bash
-# From the same working directory as the script
-bash setup-deepiri-dev.sh
-```
-
-Alternatively, you can also clone the repository and run the setup script directly from the project root
-
-```bash
-# Clone the repository
-git clone git@github.com:Team-Deepiri/deepiri-platform.git
-cd deepiri-platform
-
-# Run the install script
-bash setup-deepiri-dev.sh
-```
-
-### Manual install
-
-```bash
-# 1. Clone the repository
-git clone git@github.com:Team-Deepiri/deepiri-platform.git
-cd deepiri-platform
-
-# 2. Pull submodules for your team (see teams/<team>.yml)
 ./setup-deepiri-dev.sh pull ai-team
-
-# 3. Build services
 ./setup-deepiri-dev.sh build ai-team
-
-# 4. Start the full stack
 ./setup-deepiri-dev.sh start ai-team
 
-# OR use docker compose directly
-docker compose -f docker-compose.dev.yml up -d <service>
-
-# All services
-
+# Or compose directly
 docker compose -f docker-compose.dev.yml up -d
 ```
 
@@ -212,7 +174,7 @@ docker compose -f docker-compose.dev.yml ps
 ## Project Structure
 
 ```
-deepiri-platform/
+deepiri-control-plane/
 ├── platform-services/
 │   ├── backend/
 │   │   ├── deepiri-api-gateway/

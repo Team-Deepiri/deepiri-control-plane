@@ -9,7 +9,7 @@
 # Onboard (no args):
 #   1. Pick team (QA tiers 1–3 mirror frontend / backend / ai)
 #   2. Prereqs (git, docker, compose, python3, node, npm, ssh); Debian on WSL/Linux
-#   3. Clone (or reuse) deepiri-platform
+#   3. Clone (or reuse) deepiri-control-plane
 #   4. pull → build → start from teams/<team>.yml, then seed postgres-core
 #
 # Day-to-day (same script):
@@ -370,11 +370,11 @@ choose_project_dir() {
     mkdir -p "$PROJECT_PARENT_DIR"
     PROJECT_PARENT_DIR="$(cd "$PROJECT_PARENT_DIR" && pwd)"
     PROJECT_ROOT="$PROJECT_PARENT_DIR/Deepiri"
-    PLATFORM_REPO_DIR="$PROJECT_ROOT/deepiri-platform"
+    PLATFORM_REPO_DIR="$PROJECT_ROOT/deepiri-control-plane"
     ok "Project root: $PROJECT_ROOT"
 }
 
-# Detect whether the script is already running from inside a deepiri-platform
+# Detect whether the script is already running from inside a deepiri-control-plane
 # clone -- in that case, skip cloning and reuse it.
 detect_existing_clone() {
     local script_dir
@@ -407,7 +407,7 @@ detect_existing_clone() {
 }
 
 clone_platform_repo() {
-    step "Cloning deepiri-platform"
+    step "Cloning deepiri-control-plane"
     if [[ -n "$EXISTING_CLONE" ]]; then
         ok "Detected existing clone at: $EXISTING_CLONE"
         if confirm "Use this existing clone instead of cloning into $PLATFORM_REPO_DIR?" "Y"; then
