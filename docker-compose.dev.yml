@@ -356,11 +356,11 @@ services:
       TRUSS_URL: http://truss:5002
       REGISTRY_URL: http://registry:5003
       TELEMETRY_URL: http://telemetry:5004
-      MESSAGING_SERVICE_URL: http://messaging-service:5009
       JOBS_URL: http://jobs:5007
       EXTERNAL_BRIDGE_SERVICE_URL: http://external-bridge-service:5006
       REALTIME_GATEWAY_URL: http://realtime-gateway:5008
-      LANGUAGE_INTELLIGENCE_SERVICE_URL: http://language-intelligence-service:5010
+      MESSAGING_SERVICE_URL: http://messaging-service:5010
+      LANGUAGE_INTELLIGENCE_SERVICE_URL: http://language-intelligence-service:5003
       SYNAPSE_URL: http://synapse:8002
       JWT_SECRET: ${JWT_SECRET:-deepiri-local-dev-jwt-key-for-dev-only-x9z}
       K8S_SERVICE_NAME: api-gateway  # Filter to only load this service's configmap
@@ -462,6 +462,8 @@ services:
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-password}
       REDIS_URL: redis://:${REDIS_PASSWORD:-password}@redis:6379
+      JOBS_URL: ${JOBS_URL:-http://jobs:5007}
+      SPEECH_URL: ${SPEECH_URL:-http://speech:5020}
       K8S_SERVICE_NAME: truss  # Filter to only load this service's configmap
     volumes:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
@@ -474,6 +476,8 @@ services:
       postgres-core:
         condition: service_healthy
       synapse:
+        condition: service_started
+      jobs:
         condition: service_started
     networks:
       - deepiri-dev-network
@@ -536,6 +540,7 @@ services:
       PORT: 5004
       DATABASE_URL: postgresql://${POSTGRES_CORE_USER:-deepiri}:${POSTGRES_CORE_PASSWORD:-deepiripassword}@postgres-core:5432/${POSTGRES_CORE_DB:-deepiri}
       SYNAPSE_URL: http://synapse:8002
+      JOBS_URL: ${JOBS_URL:-http://jobs:5007}
       K8S_SERVICE_NAME: telemetry  # Filter to only load this service's configmap
     volumes:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
@@ -811,6 +816,115 @@ services:
       - deepiri-dev-network
 
   # ════════════════════════════════════════════════════════════════════════
+  # Speech — Pipecat (in-process, always-on) + LiveKit WebRTC SFU
+  # Docs: docs/architecture/DEEPIRI_SPEECH_INTEGRATION.md
+  # ════════════════════════════════════════════════════════════════════════
+  livekit:
+    image: livekit/livekit-server:v1.8.4
+    container_name: deepiri-livekit-dev
+    restart: unless-stopped
+    logging: *minimal-logging
+    command: ["--config", "/etc/livekit.yaml"]
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "50000-50100:50000-50100/udp"
+    volumes:
+      - ./platform-services/backend/deepiri-speech/livekit.yaml:/etc/livekit.yaml:ro
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -qO- http://127.0.0.1:7880/ >/dev/null 2>&1 || exit 1",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    depends_on:
+      redis:
+        condition: service_started
+    networks:
+      - deepiri-dev-network
+
+  speech:
+    build:
+      context: ./platform-services/backend/deepiri-speech
+      dockerfile: Dockerfile
+      args:
+        # local-first default: engines installs Kokoro + faster-whisper (+ torch).
+        # core = Pipecat+LiveKit only; full = +apple.
+        SPEECH_EXTRAS: ${SPEECH_EXTRAS:-engines}
+    image: deepiri-dev-speech:latest
+    pull_policy: never
+    container_name: deepiri-speech-dev
+    restart: unless-stopped
+    logging: *minimal-logging
+    ports:
+      - "5020:5020"
+    # Variables auto-loaded from ops/k8s/configmaps when entrypoint wraps uvicorn
+    environment:
+      K8S_SERVICE_NAME: speech
+      PORT: 5020
+      SPEECH_DEVICE: ${SPEECH_DEVICE:-auto}
+      STT_PROVIDER: ${SPEECH_STT_PROVIDER:-faster_whisper}
+      TTS_PROVIDER: ${SPEECH_TTS_PROVIDER:-kokoro}
+      STT_MODEL: ${SPEECH_STT_MODEL:-small.en}
+      TTS_VOICE: ${SPEECH_TTS_VOICE:-af_heart}
+      ENABLE_SILERO_VAD: ${SPEECH_ENABLE_SILERO_VAD:-1}
+      PIPECAT_ENABLED: ${PIPECAT_ENABLED:-1}
+      PIPECAT_AUTO_REPLY: ${PIPECAT_AUTO_REPLY:-1}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      CYREX_URL: http://cyrex:8000
+      CYREX_API_KEY: ${CYREX_API_KEY:-change-me}
+      KOKORO_MODEL_DIR: ${KOKORO_MODEL_DIR:-/models/kokoro}
+      KOKORO_AUTO_DOWNLOAD: ${KOKORO_AUTO_DOWNLOAD:-1}
+      LIVEKIT_URL: ws://livekit:7880
+      LIVEKIT_PUBLIC_URL: ${LIVEKIT_PUBLIC_URL:-ws://localhost:7880}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-APIdeepirispeechdev}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-deepiri-speech-dev-secret-change-me}
+      LIVEKIT_WORKER_ENABLED: ${LIVEKIT_WORKER_ENABLED:-1}
+      LIVEKIT_DEFAULT_ROOM: ${LIVEKIT_DEFAULT_ROOM:-deepiri-voice}
+      LIVEKIT_AGENT_IDENTITY: ${LIVEKIT_AGENT_IDENTITY:-deepiri-speech-agent}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-password}
+      SPEECH_STREAM: speech-events
+      SPEECH_CHANNEL_PREFIX: speech
+      SYNAPSE_TRANSPORT: ${SYNAPSE_TRANSPORT:-sidecar}
+      SYNAPSE_SIDECAR_URL: ${SYNAPSE_SIDECAR_URL:-http://synapse-sidecar:8081}
+      JOBS_URL: ${JOBS_URL:-http://jobs:5007}
+      TRUSS_URL: ${TRUSS_URL:-http://truss:5002}
+    volumes:
+      - ./ops/k8s/configmaps:/k8s-configmaps:ro
+      - ./ops/k8s/load-k8s-env.sh:/usr/local/bin/load-k8s-env.sh:ro
+      - ./ops/k8s/secrets:/k8s-secrets:ro
+      - ./platform-services/backend/deepiri-speech/deepiri_speech:/app/deepiri_speech
+      - speech_kokoro_models:/models/kokoro
+    command: uvicorn deepiri_speech.main:app --host 0.0.0.0 --port 5020 --reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5020/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+    depends_on:
+      redis:
+        condition: service_started
+      livekit:
+        condition: service_healthy
+    networks:
+      - deepiri-dev-network
+    # GPU: SPEECH_DEVICE=cuda + NVIDIA Container Toolkit
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  # ════════════════════════════════════════════════════════════════════════
   # Ollama
   # ════════════════════════════════════════════════════════════════════════
   # Usage:
@@ -912,9 +1026,9 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-password}
-      # PostgreSQL Configuration
+      # PostgreSQL Configuration — talk to postgres-cyrex on the *container* port
       POSTGRES_HOST: postgres-cyrex
-      POSTGRES_PORT: 5434
+      POSTGRES_PORT: 5432
       POSTGRES_DB: ${POSTGRES_CYREX_DB:-cyrex_db}
       POSTGRES_USER: ${POSTGRES_CYREX_USER:-deepiri_cyrex}
       POSTGRES_PASSWORD: ${POSTGRES_CYREX_PASSWORD:-deepiripassword}
@@ -928,6 +1042,14 @@ services:
       SENTENCE_TRANSFORMERS_HOME: /app/.cache/sentence_transformers
       # Streaming Service Configuration
       SYNAPSE_URL: http://synapse:8002
+      # Messaging callback path (compose messaging listens on 5010)
+      MESSAGING_SERVICE_URL: ${MESSAGING_SERVICE_URL:-http://messaging-service:5010}
+      # deepiri-speech (platform speech engine)
+      SPEECH_ENABLED: ${SPEECH_ENABLED:-1}
+      SPEECH_URL: ${SPEECH_URL:-http://speech:5020}
+      SPEECH_PUBLIC_URL: ${SPEECH_PUBLIC_URL:-http://localhost:5020}
+      LIVEKIT_PUBLIC_URL: ${LIVEKIT_PUBLIC_URL:-ws://localhost:7880}
+      SPEECH_TTS_VOICE: ${SPEECH_TTS_VOICE:-af_heart}
       # Synapse transport (redis|sidecar). Default to sidecar in dev.
       SYNAPSE_TRANSPORT: ${SYNAPSE_TRANSPORT:-sidecar}
       SYNAPSE_SIDECAR_URL: ${SYNAPSE_SIDECAR_URL:-http://sugar-glider:8081}
@@ -1007,6 +1129,10 @@ services:
     environment:
       VITE_CYREX_BASE_URL: http://localhost:8000
       VITE_SYNAPSE_URL: http://localhost:8002
+      VITE_MESSAGING_SERVICE_URL: http://localhost:5010
+      VITE_SPEECH_URL: http://localhost:5020
+      VITE_LIVEKIT_URL: ws://localhost:7880
+      VITE_REALTIME_GATEWAY_URL: http://localhost:5008
       VITE_PORT: 5175
     ports:
       - "5175:5175"
@@ -1045,11 +1171,6 @@ services:
   #     REDIS_HOST: redis
   #     REDIS_PORT: 6379
   #     REDIS_PASSWORD: ${REDIS_PASSWORD:-password}
-  #     REDIS_URL: redis://:${REDIS_PASSWORD:-password}@redis:6379/0
-  #     # Prefer Sugar Glider for stream consume (falls back to Redis)
-  #     SYNAPSE_TRANSPORT: sidecar
-  #     SYNAPSE_SUGAR_GLIDER_URL: http://sugar-glider:8081
-  #     SYNAPSE_SIDECAR_URL: http://sugar-glider:8081
   #     # Cyrex Runtime Bridge
   #     CYREX_BASE_URL: http://cyrex:8000
   #     # Platform Services
@@ -1071,7 +1192,6 @@ services:
   #   depends_on:
   #     - cyrex
   #     - redis
-  #     - sugar-glider
   #     - synapse
   #   networks:
   #     - deepiri-dev-network
@@ -1318,6 +1438,23 @@ services:
     networks:
       - deepiri-dev-network
 
+  # PrismPipe - Capability-Routed API Pipeline
+  deepiri-prismpipe:
+    build:
+      context: ./platform-services/shared/deepiri-prismpipe
+      dockerfile: Dockerfile
+    image: deepiri-dev-prismpipe:latest
+    pull_policy: never
+    container_name: deepiri-prismpipe-dev
+    restart: unless-stopped
+    logging: *minimal-logging
+    ports:
+      - "5011:5011"
+    environment:
+      PORT: 5011
+    networks:
+      - deepiri-dev-network
+
 volumes:
   postgres_auth_dev_data:
     driver: local
@@ -1330,6 +1467,8 @@ volumes:
   pgadmin_dev_data:
     driver: local
   redis_dev_data:
+    driver: local
+  speech_kokoro_models:
     driver: local
   mlflow_dev_data:
     driver: local
