@@ -553,19 +553,9 @@ def merge_direction(
     body += "\nCreated with dev-to-main-pr.py"
 
     if dry_run:
-        print(f"  {Colors.YELLOW}[DRY RUN] Would direct-merge {SKIP_CI}: '{title}'{Colors.NC}")
-        return {"status": "dry_run", "title": title}
-
-    print(f"  {Colors.GRAY}Direct merge {SKIP_CI}...{Colors.NC}")
-    ok_direct, msg_direct, url_direct = direct_merge(repo_name, base_branch, head_branch)
-    if ok_direct:
-        print(f"  {Colors.GREEN}{msg_direct}{Colors.NC}")
-        if url_direct:
-            print(f"  {Colors.GRAY}{url_direct}{Colors.NC}")
-        return {"status": "merged", "url": url_direct or ""}
-
-    print(f"  {Colors.YELLOW}Direct merge failed: {msg_direct}{Colors.NC}")
-    print(f"  {Colors.GRAY}Falling back to PR + admin merge...{Colors.NC}")
+        print(f"  {Colors.YELLOW}[DRY RUN] Would create PR, label DevOps, and auto-merge: '{title}'{Colors.NC}")
+        ensure_devops_label(repo_name, dry_run=True)
+        return {"repo": repo_name, "status": "dry_run", "title": title}
 
     ok, url_or_err = create_pr(repo_name, head_branch, base_branch, title, body, draft=draft)
     if ok:
