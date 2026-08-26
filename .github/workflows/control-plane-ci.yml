@@ -2,9 +2,9 @@ name: Control Plane CI
 
 on:
   pull_request:
-    branches: [main, dev]
+    branches: [main, dev, infra/initial-control-plane]
   push:
-    branches: [main, dev]
+    branches: [main, dev, infra/initial-control-plane]
   workflow_dispatch:
 
 permissions:
