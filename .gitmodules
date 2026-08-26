@@ -48,3 +48,7 @@
 [submodule "platform-services/backend/deepiri-speech"]
 	path = platform-services/backend/deepiri-speech
 	url = git@github.com:Team-Deepiri/deepiri-speech.git
+[submodule "deepiri-elkedel"]
+	path = deepiri-elkedel
+	url = git@github.com:Team-Deepiri/deepiri-elkedel.git
+	branch = main
