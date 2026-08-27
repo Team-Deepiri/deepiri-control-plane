@@ -342,7 +342,7 @@ services:
   frontend:
     <<: *default-env
     build:
-      context: ./deepiri-web-frontend
+      context: ./deepiri-cp-frontend
       dockerfile: Dockerfile
       target: prod
       args:

@@ -44,9 +44,9 @@ if [ -f "deepiri-core-api/package.json" ]; then
 fi
 
 # Fix Frontend
-if [ -f "deepiri-web-frontend/package.json" ]; then
-  echo "  Installing dependencies for deepiri-web-frontend..."
-  cd "deepiri-web-frontend"
+if [ -f "deepiri-cp-frontend/package.json" ]; then
+  echo "  Installing dependencies for deepiri-cp-frontend..."
+  cd "deepiri-cp-frontend"
   npm install --legacy-peer-deps --workspaces=false
   cd "$PROJECT_ROOT"
 fi

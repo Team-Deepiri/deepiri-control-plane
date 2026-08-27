@@ -48,7 +48,7 @@ Write-Host ""
 # Setup hooks for all submodules
 Write-Host "📚 Setting up hooks for submodules..." -ForegroundColor Cyan
 Setup-Hooks "deepiri-core-api" "deepiri-core-api"
-Setup-Hooks "deepiri-web-frontend" "deepiri-web-frontend"
+Setup-Hooks "deepiri-cp-frontend" "deepiri-cp-frontend"
 Setup-Hooks "platform-services/backend/deepiri-api-gateway" "deepiri-api-gateway"
 Setup-Hooks "platform-services/backend/deepiri-auth-service" "deepiri-auth-service"
 Setup-Hooks "platform-services/backend/deepiri-external-bridge-service" "deepiri-external-bridge-service"

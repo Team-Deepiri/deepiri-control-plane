@@ -63,7 +63,7 @@ echo ""
 # Install hooks for all submodules
 echo "📚 Installing hooks for submodules..."
 install_hooks "deepiri-core-api" "deepiri-core-api"
-install_hooks "deepiri-web-frontend" "deepiri-web-frontend"
+install_hooks "deepiri-cp-frontend" "deepiri-cp-frontend"
 install_hooks "platform-services/backend/deepiri-api-gateway" "deepiri-api-gateway"
 install_hooks "platform-services/backend/deepiri-auth-service" "deepiri-auth-service"
 install_hooks "platform-services/backend/deepiri-external-bridge-service" "deepiri-external-bridge-service"

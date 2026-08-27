@@ -1490,12 +1490,12 @@ services:
   #     - deepiri-dev-network
 
   # Frontend with Vite HMR (consolidated Dockerfile — target: dev)
-  # Primary way to run deepiri-web-frontend in normal platform workflow:
+  # Primary way to run deepiri-cp-frontend in normal platform workflow:
   #   docker compose -f docker-compose.dev.yml up -d auth-service api-gateway realtime-gateway frontend-dev
-  # Linked to frontend PR: https://github.com/Team-Deepiri/deepiri-web-frontend/pull/111
+  # Linked to frontend PR: https://github.com/Team-Deepiri/deepiri-cp-frontend/pull/111
   frontend-dev:
     build:
-      context: ./deepiri-web-frontend
+      context: ./deepiri-cp-frontend
       dockerfile: Dockerfile
       target: dev
     image: deepiri-dev-frontend:latest
@@ -1519,7 +1519,7 @@ services:
       - ./ops/k8s/configmaps:/k8s-configmaps:ro
       - ./ops/k8s/load-k8s-env.sh:/usr/local/bin/load-k8s-env.sh:ro
       - ./ops/k8s/secrets:/k8s-secrets:ro
-      - ./deepiri-web-frontend:/app
+      - ./deepiri-cp-frontend:/app
       - /app/node_modules
     healthcheck:
       test:
