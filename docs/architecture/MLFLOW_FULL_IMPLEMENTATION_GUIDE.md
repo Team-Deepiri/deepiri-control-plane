@@ -103,7 +103,7 @@ curl http://localhost:5500
 If MLflow isn't running, start it:
 
 ```bash
-cd deepiri-platform
+cd deepiri-control-plane
 docker-compose -f docker-compose.dev.yml up -d mlflow
 ```
 

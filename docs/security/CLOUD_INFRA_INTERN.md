@@ -35,7 +35,7 @@
 1. Clone the repository and set up Git hooks
    ```bash
    git clone <repository-url>
-   cd deepiri-platform
+   cd deepiri-control-plane
    ./setup-hooks.sh
    ```
 

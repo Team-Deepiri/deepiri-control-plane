@@ -21,7 +21,7 @@ This will help you identify:
 
 ```bash
 git clone <your-repo-url>
-cd deepiri-platform
+cd deepiri-control-plane
 ```
 
 ### 2. Git Hooks (Automatic!)

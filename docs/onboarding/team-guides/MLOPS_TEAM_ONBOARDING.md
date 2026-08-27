@@ -80,7 +80,7 @@ docker compose -f docker-compose.dev.yml logs -f jupyter
 ```bash
 # Clone the repository
 git clone <repository-url>
-cd deepiri-platform
+cd deepiri-control-plane
 
 # Set up Git hooks (REQUIRED - protects main/master and branches containing team-dev)
 ./setup-hooks.sh

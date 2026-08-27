@@ -27,7 +27,7 @@ python -c "import torch; print(f'MPS available: {torch.backends.mps.is_available
 Set up Git hooks and pull the required submodules.
 
 ```bash
-cd deepiri-platform
+cd deepiri-control-plane
 ./setup-hooks.sh
 ./setup-deepiri-dev.sh pull ai-team
 ```
@@ -37,7 +37,7 @@ cd deepiri-platform
 Install the Deepiri model kit and Cyrex requirements.
 
 ```bash
-cd deepiri-platform
+cd deepiri-control-plane
 pip install -e deepiri-modelkit
 
 cd diri-cyrex
@@ -50,7 +50,7 @@ pip install -r requirements-mpsos.txt
 Execute the MPS configuration script to set up macOS-specific GPU settings.
 
 ```bash
-cd deepiri-platform/diri-cyrex/scripts/gpu
+cd deepiri-control-plane/diri-cyrex/scripts/gpu
 ./configure-mps-macos.sh
 ```
 
@@ -113,7 +113,7 @@ LOG_LEVEL=DEBUG
 Start the AI team stack via the consolidated setup script.
 
 ```bash
-cd deepiri-platform
+cd deepiri-control-plane
 ./setup-deepiri-dev.sh start ai-team
 ```
 
@@ -131,7 +131,7 @@ ollama pull llama3:8b
 Open a **new terminal** and navigate to `diri-cyrex` to start the Cyrex service.
 
 ```bash
-cd deepiri-platform/diri-cyrex
+cd deepiri-control-plane/diri-cyrex
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
@@ -144,6 +144,6 @@ To shut down the environment:
 - Stop Docker services:
 
 ```bash
-cd deepiri-platform
+cd deepiri-control-plane
 ./setup-deepiri-dev.sh stop ai-team
 ```

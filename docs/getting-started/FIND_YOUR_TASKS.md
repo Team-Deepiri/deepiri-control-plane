@@ -171,7 +171,7 @@
 1. **Clone the repository:**
    ```bash
    git clone <repo-url>
-   cd deepiri-platform
+   cd deepiri-control-plane
    ```
 
 2. **Set up Git hooks (REQUIRED - protects main/master and branches containing team-dev):**

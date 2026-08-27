@@ -1,6 +1,6 @@
 # GitHub Actions secrets for `deepiri-platform` CI
 
-Repository: **Team-Deepiri/deepiri-platform** → Settings → Secrets and variables → Actions.
+Repository: **Team-Deepiri/deepiri-control-plane** → Settings → Secrets and variables → Actions.
 
 ## Required for CI (submodule + Docker builds)
 

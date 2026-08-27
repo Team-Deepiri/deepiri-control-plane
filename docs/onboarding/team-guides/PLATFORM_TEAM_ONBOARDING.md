@@ -107,7 +107,7 @@ docker compose -f docker-compose.dev.yml logs -f auth-service
 
 ```bash
 git clone <repository-url>
-cd deepiri-platform
+cd deepiri-control-plane
 ```
 
 ### 2. Set Up Git Hooks (REQUIRED)
