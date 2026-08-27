@@ -28,7 +28,7 @@ fi
 # - platform-services/backend/deepiri-api-gateway
 # - platform-services/backend/deepiri-auth-service
 # - platform-services/backend/deepiri-external-bridge-service
-# - deepiri-web-frontend
+# - deepiri-cp-frontend
 SUBMODULES=()
 while IFS= read -r submodule_path; do
     [ -z "$submodule_path" ] && continue

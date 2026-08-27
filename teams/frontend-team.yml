@@ -15,7 +15,7 @@ services:
 submodules:
   - deepiri-logger
   - deepiri-suite
-  - deepiri-web-frontend
+  - deepiri-cp-frontend
   - platform-services/backend/deepiri-auth-service
   - platform-services/backend/deepiri-api-gateway
   - platform-services/shared/deepiri-shared-utils

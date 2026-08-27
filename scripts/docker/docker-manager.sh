@@ -153,7 +153,7 @@ reset_all() {
 health_check() {
     log_info "Performing health checks..."
     
-    local services=("backend" "cyrex" "deepiri-web-frontend" "redis")
+    local services=("backend" "cyrex" "deepiri-cp-frontend" "redis")
     local all_healthy=true
     
     for service in "${services[@]}"; do
@@ -192,8 +192,8 @@ dev_setup() {
     log_info "Installing API server dependencies..."
     cd deepiri-core-api && npm install && cd ..
     
-    log_info "Installing deepiri-web-frontend dependencies..."
-    cd deepiri-web-frontend && npm install && cd ..
+    log_info "Installing deepiri-cp-frontend dependencies..."
+    cd deepiri-cp-frontend && npm install && cd ..
     
     log_info "Installing Python dependencies..."
     cd diri-cyrex && pip install -r requirements.txt && cd ..

@@ -103,9 +103,9 @@ install_test_deps() {
         cd ..
     fi
     
-    # Install deepiri-web-frontend test dependencies
-    if [ -f "deepiri-web-frontend/package.json" ]; then
-        cd deepiri-web-frontend
+    # Install deepiri-cp-frontend test dependencies
+    if [ -f "deepiri-cp-frontend/package.json" ]; then
+        cd deepiri-cp-frontend
         npm install --silent
         cd ..
     fi
@@ -172,28 +172,28 @@ test_diri-cyrex() {
     fi
 }
 
-# Run deepiri-web-frontend tests
+# Run deepiri-cp-frontend tests
 test_client() {
-    log_info "Testing React deepiri-web-frontend..."
+    log_info "Testing React deepiri-cp-frontend..."
     
-    if [ -f "deepiri-web-frontend/package.json" ]; then
-        run_test "Frontend Unit Tests" "npm test -- --run" "deepiri-web-frontend"
+    if [ -f "deepiri-cp-frontend/package.json" ]; then
+        run_test "Frontend Unit Tests" "npm test -- --run" "deepiri-cp-frontend"
         
-        # Run deepiri-web-frontend linting
+        # Run deepiri-cp-frontend linting
         if npm run lint --silent 2>/dev/null; then
             log_success "Frontend linting passed"
         else
             log_warning "Frontend linting issues found"
         fi
         
-        # Run deepiri-web-frontend build test
+        # Run deepiri-cp-frontend build test
         if npm run build --silent 2>/dev/null; then
             log_success "Frontend build test passed"
         else
             log_error "Frontend build test failed"
         fi
     else
-        log_warning "Frontend package.json not found, skipping deepiri-web-frontend tests"
+        log_warning "Frontend package.json not found, skipping deepiri-cp-frontend tests"
     fi
 }
 
@@ -250,8 +250,8 @@ test_security() {
         cd ..
     fi
     
-    if [ -f "deepiri-web-frontend/package.json" ]; then
-        cd deepiri-web-frontend
+    if [ -f "deepiri-cp-frontend/package.json" ]; then
+        cd deepiri-cp-frontend
         if npm audit --audit-level=moderate; then
             log_success "Client security audit passed"
         else
@@ -374,7 +374,7 @@ case "${1:-all}" in
         install_test_deps
         test_diri-cyrex
         ;;
-    deepiri-web-frontend)
+    deepiri-cp-frontend)
         check_dependencies
         install_test_deps
         test_client
@@ -399,7 +399,7 @@ case "${1:-all}" in
         echo "Commands:"
         echo "  server       Run API server tests only"
         echo "  python       Run Python backend tests only"
-        echo "  deepiri-web-frontend     Run deepiri-web-frontend tests only"
+        echo "  deepiri-cp-frontend     Run deepiri-cp-frontend tests only"
         echo "  integration  Run integration tests only"
         echo "  security     Run security tests only"
         echo "  performance  Run performance tests only"

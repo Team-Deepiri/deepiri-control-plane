@@ -26,7 +26,7 @@ submodules=(
     "deepiri-core-api"
     "diri-cyrex"
     "platform-services/backend/deepiri-api-gateway"
-    "deepiri-web-frontend"
+    "deepiri-cp-frontend"
     "platform-services/backend/deepiri-external-bridge-service"
     "platform-services/backend/deepiri-auth-service"
 )

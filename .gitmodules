@@ -10,15 +10,15 @@
 [submodule "platform-services/backend/deepiri-api-gateway"]
 	path = platform-services/backend/deepiri-api-gateway
 	url = git@github.com:Team-Deepiri/deepiri-api-gateway.git
-[submodule "deepiri-web-frontend"]
-	path = deepiri-web-frontend
-	url = git@github.com:Team-Deepiri/deepiri-web-frontend.git
+[submodule "deepiri-cp-frontend"]
+	path = deepiri-cp-frontend
+	url = git@github.com:Team-Deepiri/deepiri-cp-frontend.git
 [submodule "platform-services/backend/deepiri-external-bridge-service"]
 	path = platform-services/backend/deepiri-external-bridge-service
-	url = git@github.com:Team-Deepiri/deepiri-external-bridge-service.git
+	url = git@github.com:Team-Deepiri/deepiri-cp-external-bridge-service.git
 [submodule "platform-services/backend/deepiri-auth-service"]
 	path = platform-services/backend/deepiri-auth-service
-	url = git@github.com:Team-Deepiri/deepiri-auth-service.git
+	url = git@github.com:Team-Deepiri/deepiri-cp-auth-service.git
 [submodule "platform-services/backend/deepiri-language-intelligence-service"]
 	path = platform-services/backend/deepiri-language-intelligence-service
 	url = git@github.com:Team-Deepiri/deepiri-language-intelligence-service.git

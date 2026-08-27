@@ -326,7 +326,7 @@ if (-not $SkipSubmodules) {
         "platform-services/backend/deepiri-auth-service",
         "platform-services/backend/deepiri-external-bridge-service",
         "platform-services/backend/deepiri-language-intelligence-service",
-        "deepiri-web-frontend"
+        "deepiri-cp-frontend"
     )
 
     $AllSubs = $false
@@ -336,7 +336,7 @@ if (-not $SkipSubmodules) {
         "ml"             { @("diri-helox", "deepiri-modelkit", "deepiri-ollama-utils") + $Shared }
         "backend"        { $Backend + $Shared }
         "infrastructure" { $Backend + $Shared }
-        "frontend"       { @("deepiri-web-frontend", "platform-services/backend/deepiri-api-gateway", "platform-services/backend/deepiri-auth-service") + $Shared }
+        "frontend"       { @("deepiri-cp-frontend", "platform-services/backend/deepiri-api-gateway", "platform-services/backend/deepiri-auth-service") + $Shared }
         "platform"       { $AllSubs = $true; @() }
         "qa"             { @(
                             "platform-services/shared/deepiri-synapse",
@@ -346,7 +346,7 @@ if (-not $SkipSubmodules) {
                             "platform-services/backend/deepiri-external-bridge-service",
                             "platform-services/backend/deepiri-api-gateway",
                             "platform-services/backend/deepiri-language-intelligence-service",
-                            "deepiri-web-frontend",
+                            "deepiri-cp-frontend",
                             "deepiri-ollama-utils",
                             "deepiri-suite"
                         ) }

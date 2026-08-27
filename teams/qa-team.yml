@@ -36,7 +36,7 @@ submodules:
   - deepiri-logger
   - deepiri-suite
   - deepiri-ollama-utils
-  - deepiri-web-frontend
+  - deepiri-cp-frontend
   - platform-services/shared/deepiri-synapse
   - platform-services/shared/deepiri-sugar-glider
   - platform-services/shared/deepiri-shared-utils

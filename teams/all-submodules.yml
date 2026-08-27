@@ -19,8 +19,8 @@ submodules:
   - path: deepiri-suite
     url: git@github.com:Team-Deepiri/deepiri-suite.git
 
-  - path: deepiri-web-frontend
-    url: git@github.com:Team-Deepiri/deepiri-web-frontend.git
+  - path: deepiri-cp-frontend
+    url: git@github.com:Team-Deepiri/deepiri-cp-frontend.git
 
   - path: deepiri-logger
     url: git@github.com:Team-Deepiri/deepiri-logger.git

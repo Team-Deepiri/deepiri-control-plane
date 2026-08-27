@@ -44,8 +44,8 @@ install_deps() {
     cd ..
     
     # Frontend dependencies
-    log_info "Installing deepiri-web-frontend dependencies..."
-    cd deepiri-web-frontend
+    log_info "Installing deepiri-cp-frontend dependencies..."
+    cd deepiri-cp-frontend
     npm install
     cd ..
     
@@ -75,8 +75,8 @@ run_tests() {
     cd ..
     
     # Frontend tests
-    log_info "Running deepiri-web-frontend tests..."
-    cd deepiri-web-frontend
+    log_info "Running deepiri-cp-frontend tests..."
+    cd deepiri-cp-frontend
     npm test
     cd ..
     
@@ -94,8 +94,8 @@ lint_all() {
     cd ..
     
     # Frontend linting
-    log_info "Linting deepiri-web-frontend code..."
-    cd deepiri-web-frontend
+    log_info "Linting deepiri-cp-frontend code..."
+    cd deepiri-cp-frontend
     npm run lint || true
     cd ..
     
@@ -114,7 +114,7 @@ format_all() {
     
     # Client formatting
     log_info "Formatting client code..."
-    cd deepiri-web-frontend
+    cd deepiri-cp-frontend
     npx prettier --write "**/*.{js,jsx,json,css}" || true
     cd ..
     
@@ -204,7 +204,7 @@ security_audit() {
     npm audit || true
     cd ..
     
-    cd deepiri-web-frontend
+    cd deepiri-cp-frontend
     npm audit || true
     cd ..
     
@@ -339,8 +339,8 @@ dev_server() {
     PYTHON_PID=$!
     cd ..
     
-    log_info "Starting deepiri-web-frontend..."
-    cd deepiri-web-frontend
+    log_info "Starting deepiri-cp-frontend..."
+    cd deepiri-cp-frontend
     npm run dev &
     CLIENT_PID=$!
     cd ..
@@ -361,7 +361,7 @@ prod_build() {
     
     # Build client
     log_info "Building client..."
-    cd deepiri-web-frontend
+    cd deepiri-cp-frontend
     npm run build
     cd ..
     
