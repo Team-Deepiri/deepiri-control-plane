@@ -9,7 +9,7 @@
 	url = git@github.com:Team-Deepiri/deepiri-modelkit.git
 [submodule "platform-services/backend/deepiri-api-gateway"]
 	path = platform-services/backend/deepiri-api-gateway
-	url = git@github.com:Team-Deepiri/deepiri-api-gateway.git
+	url = git@github.com:Team-Deepiri/deepiri-cp-api-gateway.git
 [submodule "deepiri-cp-frontend"]
 	path = deepiri-cp-frontend
 	url = git@github.com:Team-Deepiri/deepiri-cp-frontend.git
