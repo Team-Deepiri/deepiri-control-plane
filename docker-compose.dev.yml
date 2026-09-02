@@ -826,13 +826,26 @@ services:
     container_name: deepiri-livekit-dev
     restart: unless-stopped
     logging: *minimal-logging
-    command: ["--config", "/etc/livekit.yaml"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-password}
+    # livekit.yaml's redis.password is a __REDIS_PASSWORD__ placeholder, not a
+    # real value — the mounted file is :ro and livekit-server has no env-var
+    # override for nested redis config, so this substitutes it into a
+    # writable copy before starting. Was previously hardcoded to the literal
+    # string "password", which only worked when REDIS_PASSWORD was left at
+    # its own dev default — silently breaks (WRONGPASS) the moment a real
+    # secret is set on redis, which is exactly what real deploy secrets do.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        sed "s/__REDIS_PASSWORD__/$$REDIS_PASSWORD/" /etc/livekit.yaml.template > /tmp/livekit.yaml
+        exec /livekit-server --config /tmp/livekit.yaml
     ports:
       - "7880:7880"
       - "7881:7881"
       - "50000-50100:50000-50100/udp"
     volumes:
-      - ./platform-services/backend/deepiri-speech/livekit.yaml:/etc/livekit.yaml:ro
+      - ./platform-services/backend/deepiri-speech/livekit.yaml:/etc/livekit.yaml.template:ro
     healthcheck:
       test:
         [
@@ -1222,6 +1235,19 @@ services:
     depends_on:
       elkedel:
         condition: service_healthy
+    # Image's baked-in HEALTHCHECK probes 127.0.0.1:8765/health (elkedel's
+    # own default) — this container runs elkedel-mcp on 8766 instead via the
+    # command override above, so that check always fails even when the
+    # service is fine. It's an MCP streamable-http server, not a REST API,
+    # so there's no /health route to point at instead (confirmed: hitting
+    # the actual port returns a real 404, not a connection failure) — a
+    # plain TCP check on the right port is what actually reflects health.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s=socket.socket(); s.settimeout(3); s.connect(('127.0.0.1', 8766))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     networks:
       - deepiri-dev-network
 
