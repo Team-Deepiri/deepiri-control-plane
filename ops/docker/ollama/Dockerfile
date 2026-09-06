@@ -62,14 +62,22 @@ RUN if [ "$PRE_PULL_MODELS" = "true" ]; then \
         echo "ℹ️ Skipping model pre-pull"; \
     fi
 
+# /root/.ollama only gets created above when PRE_PULL_MODELS=true (it's the
+# ollama server's own data dir, made lazily on first run) — guarantee it
+# exists either way so the COPY below always has a real source.
+RUN mkdir -p /root/.ollama
+
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Final image
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 FROM base
 
-# Copy pre-downloaded models
-COPY --from=model-downloader /root/.ollama /root/.ollama 2>/dev/null || true
+# Copy pre-downloaded models. COPY isn't run through a shell (unlike RUN), so
+# it can't use `2>/dev/null || true` to tolerate a missing source — the
+# model-downloader stage now always creates /root/.ollama, so a plain COPY
+# is safe whether or not models were actually pre-pulled.
+COPY --from=model-downloader /root/.ollama /root/.ollama
 
 # Copy entrypoint
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh

@@ -80,7 +80,10 @@ detect_platform() {
                 . /etc/os-release
                 DISTRO_ID="${ID:-}"
             fi
-            if [[ "$DISTRO_ID" == "debian" ]]; then
+            # Gate on the actual capability (apt-get present) rather than an
+            # exact distro string -- Ubuntu, Mint, Pop!_OS, etc. are all
+            # apt-based and work identically for our purposes.
+            if command -v apt-get >/dev/null 2>&1; then
                 PKG_MANAGER="apt"
             fi
             ;;
@@ -92,14 +95,14 @@ detect_platform() {
 
 require_debian_on_wsl_or_linux() {
     if [[ "$OS_KIND" == "wsl" || "$OS_KIND" == "linux" ]]; then
-        if [[ "$DISTRO_ID" != "debian" ]]; then
+        if [[ "$PKG_MANAGER" != "apt" ]]; then
             err "Detected ${OS_KIND^^} distro: ${DISTRO_ID:-unknown}"
-            err "Deepiri requires the Debian distribution on WSL2/Linux."
-            err "Install Debian (e.g. \`wsl --install -d Debian\` from PowerShell)"
-            err "and re-run this script from inside that Debian shell."
+            err "Deepiri requires an apt-based distro (Debian, Ubuntu, ...) on WSL2/Linux."
+            err "Install one (e.g. \`wsl --install -d Debian\` from PowerShell)"
+            err "and re-run this script from inside that shell."
             exit 1
         fi
-        ok "Debian detected (${OS_KIND^^})"
+        ok "apt-based distro detected: ${DISTRO_ID:-unknown} (${OS_KIND^^})"
     fi
 }
 
@@ -866,7 +869,11 @@ team_cmd_pull() {
     root="$(team_repo_root)"
     echo "$display — pulling submodules"
     [[ -d "$root/.git" ]] || fatal "Not a git repo: $root"
-    team_run --no-check git pull origin main
+    # Pull whatever branch is actually checked out + its configured upstream,
+    # rather than a hardcoded "main" -- this repo's default branch is
+    # currently infra/initial-control-plane, so `git pull origin main` always
+    # failed (silently, since it's wrapped in --no-check).
+    team_run --no-check git pull
     local -a subs=() optional=()
     mapfile -t subs < <(team_resolve_submodules)
     mapfile -t optional < <(printf '%s\n' "${TEAM_PULL_OPTIONAL[@]}")
@@ -1012,10 +1019,15 @@ team_filter_start_services() {
     mapfile -t pull_only < <(team_pull_only_set)
     mapfile -t optional < <(printf '%s\n' "${TEAM_START_OPTIONAL[@]}")
     backend="$(team_detect_backend)"
-    echo "Detected backend: $backend"
+    # This function's stdout is captured wholesale via
+    # `mapfile -t services < <(team_filter_start_services ...)` in
+    # team_cmd_start -- every diagnostic message below MUST go to stderr, or
+    # it gets treated as a service name and breaks `docker compose up` (e.g.
+    # "no such service: Detected backend: cuda").
+    echo "Detected backend: $backend" >&2
     out=("${services[@]}")
     if [[ "$backend" == "mps" && ${#TEAM_START_EXCLUDE_MPS[@]} -gt 0 ]]; then
-        echo "MPS — excluding: $(IFS=,; echo "${TEAM_START_EXCLUDE_MPS[*]}")"
+        echo "MPS — excluding: $(IFS=,; echo "${TEAM_START_EXCLUDE_MPS[*]}")" >&2
         for svc in "${out[@]}"; do
             team_in_list "$svc" "${TEAM_START_EXCLUDE_MPS[@]}" || filtered+=("$svc")
         done
@@ -1026,7 +1038,7 @@ team_filter_start_services() {
         if team_in_list "$svc" "${TEAM_START_REQUIRE_DF[@]}"; then
             hint="${TEAM_DOCKERFILE_HINTS[$svc]:-}"
             if [[ -n "$hint" && ! -f "$root/$hint" ]]; then
-                echo "Skipping $svc (Dockerfile missing: $hint)"
+                echo "Skipping $svc (Dockerfile missing: $hint)" >&2
                 continue
             fi
         fi
@@ -1035,10 +1047,10 @@ team_filter_start_services() {
     for svc in "${filtered[@]}"; do
         if team_in_list "$svc" "${pull_only[@]}"; then final+=("$svc"); continue; fi
         if team_in_list "$svc" "${optional[@]}" && ! team_image_exists_for_service "$svc"; then
-            echo "Skipping optional $svc (image not found)"; continue
+            echo "Skipping optional $svc (image not found)" >&2; continue
         fi
         if ! team_image_exists_for_service "$svc"; then
-            echo "Skipping $svc (image not found — run build first)"; continue
+            echo "Skipping $svc (image not found — run build first)" >&2; continue
         fi
         final+=("$svc")
     done
