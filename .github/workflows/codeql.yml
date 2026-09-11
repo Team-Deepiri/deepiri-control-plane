@@ -2,9 +2,9 @@ name: CodeQL
 
 on:
   pull_request:
-    branches: [main, dev]
+    branches: [main, dev, infra/initial-control-plane]
   push:
-    branches: [main, dev]
+    branches: [main, dev, infra/initial-control-plane]
 
 permissions:
   actions: read
