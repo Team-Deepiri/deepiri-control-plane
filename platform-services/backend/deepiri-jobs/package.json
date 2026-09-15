@@ -1,6 +1,6 @@
 {
   "name": "deepiri-jobs",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Adaptive Experience Engine - Dynamic Challenge/Mission/Objective Generation",
   "main": "dist/server.js",
   "scripts": {
@@ -10,7 +10,7 @@
     "test": "jest"
   },
   "dependencies": {
-    "@team-deepiri/shared-utils": "github:Team-Deepiri/deepiri-shared-utils#d4122237e0afa27d6999838b909cd2d76272cca1",
+    "@team-deepiri/shared-utils": "github:Team-Deepiri/deepiri-shared-utils#7a47f7fde4422b2ce00fc229568cb212c96f3a3b",
     "@prisma/client": "^5.7.0",
     "axios": "^1.18.0",
     "cors": "^2.8.5",
